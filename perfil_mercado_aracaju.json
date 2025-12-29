@@ -1,0 +1,154 @@
+[
+    {
+        "subestacao": "NORTISTA",
+        "total_clientes_estimados": 33001,
+        "perfil": {
+            "Residencial": {
+                "qtd": 31014,
+                "pct": 93.98
+            },
+            "Comercial": {
+                "qtd": 1856,
+                "pct": 5.62
+            },
+            "Industrial": {
+                "qtd": 31,
+                "pct": 0.09
+            }
+        },
+        "consumo_total_kwh_mes": 6533514.14
+    },
+    {
+        "subestacao": "SE CONTORNO",
+        "total_clientes_estimados": 24211,
+        "perfil": {
+            "Residencial": {
+                "qtd": 21409,
+                "pct": 88.43
+            },
+            "Comercial": {
+                "qtd": 2612,
+                "pct": 10.79
+            },
+            "Industrial": {
+                "qtd": 43,
+                "pct": 0.18
+            }
+        },
+        "consumo_total_kwh_mes": 7273846.34
+    },
+    {
+        "subestacao": "SECCIONADORA MOSQUEIRO",
+        "total_clientes_estimados": 34938,
+        "perfil": {
+            "Residencial": {
+                "qtd": 33392,
+                "pct": 95.58
+            },
+            "Comercial": {
+                "qtd": 1362,
+                "pct": 3.9
+            },
+            "Industrial": {
+                "qtd": 45,
+                "pct": 0.13
+            }
+        },
+        "consumo_total_kwh_mes": 6826403.0
+    },
+    {
+        "subestacao": "SUBESTA5",
+        "total_clientes_estimados": 70247,
+        "perfil": {
+            "Residencial": {
+                "qtd": 59699,
+                "pct": 84.98
+            },
+            "Comercial": {
+                "qtd": 2464,
+                "pct": 3.51
+            },
+            "Industrial": {
+                "qtd": 60,
+                "pct": 0.09
+            }
+        },
+        "consumo_total_kwh_mes": 9164998.43
+    },
+    {
+        "subestacao": "SUBESTA6",
+        "total_clientes_estimados": 41273,
+        "perfil": {
+            "Residencial": {
+                "qtd": 38094,
+                "pct": 92.3
+            },
+            "Comercial": {
+                "qtd": 2941,
+                "pct": 7.13
+            },
+            "Industrial": {
+                "qtd": 36,
+                "pct": 0.09
+            }
+        },
+        "consumo_total_kwh_mes": 10802723.38
+    },
+    {
+        "subestacao": "SUBESTA7",
+        "total_clientes_estimados": 61748,
+        "perfil": {
+            "Residencial": {
+                "qtd": 54399,
+                "pct": 88.1
+            },
+            "Comercial": {
+                "qtd": 6932,
+                "pct": 11.23
+            },
+            "Industrial": {
+                "qtd": 69,
+                "pct": 0.11
+            }
+        },
+        "consumo_total_kwh_mes": 18787219.98
+    },
+    {
+        "subestacao": "SUBESTA8",
+        "total_clientes_estimados": 30006,
+        "perfil": {
+            "Residencial": {
+                "qtd": 28635,
+                "pct": 95.43
+            },
+            "Comercial": {
+                "qtd": 1242,
+                "pct": 4.14
+            },
+            "Industrial": {
+                "qtd": 8,
+                "pct": 0.03
+            }
+        },
+        "consumo_total_kwh_mes": 4674376.44
+    },
+    {
+        "subestacao": "SUBESTA9",
+        "total_clientes_estimados": 28828,
+        "perfil": {
+            "Residencial": {
+                "qtd": 22798,
+                "pct": 79.08
+            },
+            "Comercial": {
+                "qtd": 5569,
+                "pct": 19.32
+            },
+            "Industrial": {
+                "qtd": 34,
+                "pct": 0.12
+            }
+        },
+        "consumo_total_kwh_mes": 6671017.15
+    }
+]
