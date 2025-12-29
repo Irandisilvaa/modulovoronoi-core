@@ -59,17 +59,17 @@ def voronoi_finite_polygons_2d(vor, radius=None):
     return new_regions, np.asarray(new_vertices)
 
 def main():
-    print("🚀 INICIANDO GERAÇÃO DE SUBESTAÇÕES LÓGICAS (VORONOI)")
+    print("INICIANDO GERAÇÃO DE SUBESTAÇÕES LÓGICAS (VORONOI)")
     
     # 1. CARREGAR DADOS
     subs_raw = etl_bdgd.carregar_subestacoes()
     
     # 2. CARREGAR LIMITES
-    print(f"📍 Baixando limites territoriais de: {CIDADE_ALVO}...")
+    print(f"Baixando limites territoriais de: {CIDADE_ALVO}...")
     try:
         limite_cidade = ox.geocode_to_gdf(CIDADE_ALVO)
     except Exception as e:
-        print(f"❌ Erro ao baixar dados do OSM: {e}")
+        print(f"Erro ao baixar dados do OSM: {e}")
         return
 
     # 3. PREPARAR CRS
@@ -79,12 +79,12 @@ def main():
     limite_cidade = limite_cidade.to_crs(subs_raw.crs)
 
     # 4. FILTRAR
-    print("✂️  Recortando subestações da área de interesse...")
+    print("Recortando subestações da área de interesse...")
     subs_cidade = gpd.clip(subs_raw, limite_cidade)
-    print(f"⚡ Subestações na área urbana: {len(subs_cidade)}")
+    print(f"Subestações na área urbana: {len(subs_cidade)}")
     
     if len(subs_cidade) < 2:
-        print("⚠️  ERRO: Preciso de pelo menos 2 subestações.")
+        print("ERRO: Precisa de pelo menos 2 subestações.")
         return
 
     # 5. PONTOS
@@ -94,7 +94,7 @@ def main():
     limite_proj = limite_cidade.to_crs(CRS_PROJETADO)
 
     # 6. VORONOI
-    print("🧮 Calculando diagrama matemático...")
+    print("Calculando diagrama matemático...")
     coords = np.array([(p.x, p.y) for p in pontos_proj.geometry])
     vor = Voronoi(coords)
     regions, vertices = voronoi_finite_polygons_2d(vor)
@@ -106,7 +106,7 @@ def main():
     voronoi_gdf = gpd.GeoDataFrame(geometry=polygons_list, crs=CRS_PROJETADO)
 
     # 7. INTERSEÇÃO
-    print("🗺️  Aplicando máscara da cidade...")
+    print("Aplicando máscara da cidade...")
     subs_logicas = gpd.overlay(voronoi_gdf, limite_proj, how='intersection')
 
     # 8. JOIN FINAL (RECUPERAR DADOS)
@@ -115,16 +115,16 @@ def main():
     # --- CORREÇÃO DO ERRO DE NOME ---
     # Detecta qual coluna de nome está disponível (NOM ou NOME)
     coluna_nome_real = 'NOM' if 'NOM' in subs_logicas_finais.columns else 'NOME'
-    print(f"🎯 Usando coluna '{coluna_nome_real}' para visualização.")
+    print(f"Usando coluna '{coluna_nome_real}' para visualização.")
 
     # 9. SALVAR
     arquivo_saida = "subestacoes_logicas_aracaju.geojson"
     caminho_saida = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", arquivo_saida)
     subs_logicas_finais.to_crs(epsg=4326).to_file(caminho_saida, driver='GeoJSON')
-    print(f"✅ SUCESSO! Arquivo gerado em: {arquivo_saida}")
+    print(f"SUCESSO! Arquivo gerado em: {arquivo_saida}")
 
     # 10. PLOTAR
-    print("🎨 Gerando visualização...")
+    print("Gerando visualização...")
     fig, ax = plt.subplots(figsize=(12, 12))
     
     # Fundo
