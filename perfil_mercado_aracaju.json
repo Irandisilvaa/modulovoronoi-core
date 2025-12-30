@@ -1,154 +1,361 @@
 [
     {
         "subestacao": "NORTISTA",
-        "total_clientes_estimados": 33001,
-        "perfil": {
-            "Residencial": {
-                "qtd": 31014,
-                "pct": 93.98
-            },
-            "Comercial": {
-                "qtd": 1856,
-                "pct": 5.62
-            },
-            "Industrial": {
-                "qtd": 31,
-                "pct": 0.09
+        "metricas_rede": {
+            "total_clientes": 33001,
+            "consumo_anual_mwh": 6533.51,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 415,
+            "potencia_total_kw": 29798.38,
+            "detalhe_por_classe": {
+                "Residencial": 15002.38,
+                "Comercial": 14781.6,
+                "Rural": 6.0,
+                "Poder Público": 8.4
             }
         },
-        "consumo_total_kwh_mes": 6533514.14
+        "perfil_consumo": {
+            "Residencial": {
+                "qtd_clientes": 31014,
+                "pct": 94.0
+            },
+            "Comercial": {
+                "qtd_clientes": 1856,
+                "pct": 5.6
+            },
+            "Industrial": {
+                "qtd_clientes": 31,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 14,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 47,
+                "pct": 0.1
+            },
+            "Outros": {
+                "qtd_clientes": 39,
+                "pct": 0.1
+            }
+        }
     },
     {
         "subestacao": "SE CONTORNO",
-        "total_clientes_estimados": 24211,
-        "perfil": {
-            "Residencial": {
-                "qtd": 21409,
-                "pct": 88.43
-            },
-            "Comercial": {
-                "qtd": 2612,
-                "pct": 10.79
-            },
-            "Industrial": {
-                "qtd": 43,
-                "pct": 0.18
+        "metricas_rede": {
+            "total_clientes": 24211,
+            "consumo_anual_mwh": 7273.85,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 455,
+            "potencia_total_kw": 19462.36,
+            "detalhe_por_classe": {
+                "Residencial": 17872.02,
+                "Comercial": 1382.11,
+                "Industrial": 164.23,
+                "Poder Público": 14.0,
+                "Outros": 30.0
             }
         },
-        "consumo_total_kwh_mes": 7273846.34
+        "perfil_consumo": {
+            "Residencial": {
+                "qtd_clientes": 21409,
+                "pct": 88.4
+            },
+            "Comercial": {
+                "qtd_clientes": 2612,
+                "pct": 10.8
+            },
+            "Industrial": {
+                "qtd_clientes": 43,
+                "pct": 0.2
+            },
+            "Rural": {
+                "qtd_clientes": 1,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 85,
+                "pct": 0.4
+            },
+            "Outros": {
+                "qtd_clientes": 61,
+                "pct": 0.3
+            }
+        }
     },
     {
         "subestacao": "SECCIONADORA MOSQUEIRO",
-        "total_clientes_estimados": 34938,
-        "perfil": {
+        "metricas_rede": {
+            "total_clientes": 34938,
+            "consumo_anual_mwh": 6826.4,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 1330,
+            "potencia_total_kw": 71930.67,
+            "detalhe_por_classe": {
+                "Residencial": 70894.32,
+                "Comercial": 951.96,
+                "Industrial": 10.0,
+                "Rural": 44.7,
+                "Poder Público": 4.69,
+                "Outros": 25.0
+            }
+        },
+        "perfil_consumo": {
             "Residencial": {
-                "qtd": 33392,
-                "pct": 95.58
+                "qtd_clientes": 33392,
+                "pct": 95.6
             },
             "Comercial": {
-                "qtd": 1362,
+                "qtd_clientes": 1362,
                 "pct": 3.9
             },
             "Industrial": {
-                "qtd": 45,
-                "pct": 0.13
+                "qtd_clientes": 45,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 12,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 46,
+                "pct": 0.1
+            },
+            "Outros": {
+                "qtd_clientes": 81,
+                "pct": 0.2
             }
-        },
-        "consumo_total_kwh_mes": 6826403.0
+        }
     },
     {
         "subestacao": "SUBESTA5",
-        "total_clientes_estimados": 70247,
-        "perfil": {
-            "Residencial": {
-                "qtd": 59699,
-                "pct": 84.98
-            },
-            "Comercial": {
-                "qtd": 2464,
-                "pct": 3.51
-            },
-            "Industrial": {
-                "qtd": 60,
-                "pct": 0.09
+        "metricas_rede": {
+            "total_clientes": 70247,
+            "consumo_anual_mwh": 9165.0,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 369,
+            "potencia_total_kw": 7912.66,
+            "detalhe_por_classe": {
+                "Residencial": 6835.08,
+                "Comercial": 971.58,
+                "Industrial": 100.0,
+                "Rural": 6.0
             }
         },
-        "consumo_total_kwh_mes": 9164998.43
+        "perfil_consumo": {
+            "Residencial": {
+                "qtd_clientes": 59699,
+                "pct": 85.0
+            },
+            "Comercial": {
+                "qtd_clientes": 2464,
+                "pct": 3.5
+            },
+            "Industrial": {
+                "qtd_clientes": 60,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 7,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 7970,
+                "pct": 11.3
+            },
+            "Outros": {
+                "qtd_clientes": 47,
+                "pct": 0.1
+            }
+        }
     },
     {
         "subestacao": "SUBESTA6",
-        "total_clientes_estimados": 41273,
-        "perfil": {
+        "metricas_rede": {
+            "total_clientes": 41273,
+            "consumo_anual_mwh": 10802.72,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 1016,
+            "potencia_total_kw": 32516.47,
+            "detalhe_por_classe": {
+                "Residencial": 30043.48,
+                "Comercial": 2294.21,
+                "Industrial": 67.04,
+                "Poder Público": 34.0,
+                "Outros": 77.74
+            }
+        },
+        "perfil_consumo": {
             "Residencial": {
-                "qtd": 38094,
+                "qtd_clientes": 38094,
                 "pct": 92.3
             },
             "Comercial": {
-                "qtd": 2941,
-                "pct": 7.13
+                "qtd_clientes": 2941,
+                "pct": 7.1
             },
             "Industrial": {
-                "qtd": 36,
-                "pct": 0.09
+                "qtd_clientes": 36,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 7,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 101,
+                "pct": 0.2
+            },
+            "Outros": {
+                "qtd_clientes": 94,
+                "pct": 0.2
             }
-        },
-        "consumo_total_kwh_mes": 10802723.38
+        }
     },
     {
         "subestacao": "SUBESTA7",
-        "total_clientes_estimados": 61748,
-        "perfil": {
+        "metricas_rede": {
+            "total_clientes": 61748,
+            "consumo_anual_mwh": 18787.22,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 1729,
+            "potencia_total_kw": 108143.72,
+            "detalhe_por_classe": {
+                "Residencial": 103024.0,
+                "Comercial": 4876.9,
+                "Industrial": 141.62,
+                "Rural": 31.6,
+                "Poder Público": 69.6
+            }
+        },
+        "perfil_consumo": {
             "Residencial": {
-                "qtd": 54399,
+                "qtd_clientes": 54399,
                 "pct": 88.1
             },
             "Comercial": {
-                "qtd": 6932,
-                "pct": 11.23
+                "qtd_clientes": 6932,
+                "pct": 11.2
             },
             "Industrial": {
-                "qtd": 69,
-                "pct": 0.11
+                "qtd_clientes": 69,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 29,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 230,
+                "pct": 0.4
+            },
+            "Outros": {
+                "qtd_clientes": 89,
+                "pct": 0.1
             }
-        },
-        "consumo_total_kwh_mes": 18787219.98
+        }
     },
     {
         "subestacao": "SUBESTA8",
-        "total_clientes_estimados": 30006,
-        "perfil": {
-            "Residencial": {
-                "qtd": 28635,
-                "pct": 95.43
-            },
-            "Comercial": {
-                "qtd": 1242,
-                "pct": 4.14
-            },
-            "Industrial": {
-                "qtd": 8,
-                "pct": 0.03
+        "metricas_rede": {
+            "total_clientes": 30006,
+            "consumo_anual_mwh": 4674.38,
+            "nivel_criticidade_gd": "MEDIO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 178,
+            "potencia_total_kw": 2639.14,
+            "detalhe_por_classe": {
+                "Residencial": 1252.18,
+                "Comercial": 1318.66,
+                "Rural": 28.3,
+                "Poder Público": 40.0
             }
         },
-        "consumo_total_kwh_mes": 4674376.44
+        "perfil_consumo": {
+            "Residencial": {
+                "qtd_clientes": 28635,
+                "pct": 95.4
+            },
+            "Comercial": {
+                "qtd_clientes": 1242,
+                "pct": 4.1
+            },
+            "Industrial": {
+                "qtd_clientes": 8,
+                "pct": 0.0
+            },
+            "Rural": {
+                "qtd_clientes": 3,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 77,
+                "pct": 0.3
+            },
+            "Outros": {
+                "qtd_clientes": 41,
+                "pct": 0.1
+            }
+        }
     },
     {
         "subestacao": "SUBESTA9",
-        "total_clientes_estimados": 28828,
-        "perfil": {
-            "Residencial": {
-                "qtd": 22798,
-                "pct": 79.08
-            },
-            "Comercial": {
-                "qtd": 5569,
-                "pct": 19.32
-            },
-            "Industrial": {
-                "qtd": 34,
-                "pct": 0.12
+        "metricas_rede": {
+            "total_clientes": 28828,
+            "consumo_anual_mwh": 6671.02,
+            "nivel_criticidade_gd": "ALTO"
+        },
+        "geracao_distribuida": {
+            "total_unidades": 345,
+            "potencia_total_kw": 5527.34,
+            "detalhe_por_classe": {
+                "Residencial": 2529.9,
+                "Comercial": 2838.47,
+                "Industrial": 45.05,
+                "Rural": 30.0,
+                "Poder Público": 75.92,
+                "Outros": 8.0
             }
         },
-        "consumo_total_kwh_mes": 6671017.15
+        "perfil_consumo": {
+            "Residencial": {
+                "qtd_clientes": 22798,
+                "pct": 79.1
+            },
+            "Comercial": {
+                "qtd_clientes": 5569,
+                "pct": 19.3
+            },
+            "Industrial": {
+                "qtd_clientes": 34,
+                "pct": 0.1
+            },
+            "Rural": {
+                "qtd_clientes": 1,
+                "pct": 0.0
+            },
+            "Poder Público": {
+                "qtd_clientes": 301,
+                "pct": 1.0
+            },
+            "Outros": {
+                "qtd_clientes": 125,
+                "pct": 0.4
+            }
+        }
     }
 ]

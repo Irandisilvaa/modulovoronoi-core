@@ -1,103 +1,154 @@
 import geopandas as gpd
 import pandas as pd
 import os
-import sys
 import json
+import warnings
 
-# --- CONFIGURAÇÃO ---
+# Ignora avisos do pandas
+warnings.filterwarnings('ignore')
+
+# --- CONFIGURACAO ---
 NOME_PASTA_GDB = "Energisa_SE_6587_2023-12-31_V11_20250701-0833.gdb"
 NOME_ARQUIVO_VORONOI = "subestacoes_logicas_aracaju.geojson"
 NOME_ARQUIVO_SAIDA = "perfil_mercado_aracaju.json"
 
-# Mapa simplificado (Sem Poder Público como pedido)
 MAPA_CLASSES = {
     'RE': 'Residencial',
     'CO': 'Comercial',
     'IN': 'Industrial',
     'RU': 'Rural',
-    # Os outros códigos cairão em 'Outros' e não serão destacados
+    'PP': 'Poder Público'
 }
 
 def analisar_mercado():
-    print("INICIANDO ANÁLISE DE MERCADO (Foco: Res/Com/Ind)")
+    print("INICIANDO ANALISE DETALHADA (POR CLASSE)...")
     
-# --- CONFIGURAÇÃO DE CAMINHOS (CORRIGIDO) ---
-    # 1. Pega a pasta onde este script está (ex: .../src/modelos)
     dir_script = os.path.dirname(os.path.abspath(__file__))
+    dir_raiz = os.path.dirname(os.path.dirname(dir_script))
     
-    # 2. Sobe um nível para a pasta 'src'
-    dir_src = os.path.dirname(dir_script)
-    
-    # 3. Sobe mais um nível para a 'Raiz do Projeto' (onde está o GeoJSON e a pasta dados)
-    dir_raiz = os.path.dirname(dir_src)
+    path_voronoi = os.path.join(dir_raiz, NOME_ARQUIVO_VORONOI)
+    path_gdb = os.path.join(dir_raiz, "dados", NOME_PASTA_GDB)
+    path_saida = os.path.join(dir_raiz, NOME_ARQUIVO_SAIDA)
 
-    # Agora os caminhos apontam para o lugar certo
-    caminho_voronoi = os.path.join(dir_raiz, NOME_ARQUIVO_VORONOI)
-    caminho_gdb = os.path.join(dir_raiz, "dados", NOME_PASTA_GDB)
-    caminho_saida = os.path.join(dir_raiz, NOME_ARQUIVO_SAIDA)
-
-    # Debug: Mostra onde ele está procurando (para você ter certeza)
-    print(f"Procurando arquivos na raiz: {dir_raiz}")
+    if not os.path.exists(path_voronoi):
+        print("Erro: Voronoi nao encontrado.")
+        return
 
     # 1. Carregar Voronoi
-    if not os.path.exists(caminho_voronoi):
-        print("Erro: Arquivo Voronoi não encontrado.")
-        return
-    gdf_voronoi = gpd.read_file(caminho_voronoi).to_crs(epsg=31984)
+    print("1. Carregando territorios...")
+    gdf_voronoi = gpd.read_file(path_voronoi).to_crs(epsg=31984)
 
-    # 2. Carregar Transformadores (GeoPandas)
-    print("Lendo Transformadores...")
+    # 2. Carregar Transformadores
+    print("2. Mapeando Transformadores...")
     try:
-        gdf_trafos = gpd.read_file(caminho_gdb, layer='UNTRMT', engine='pyogrio').to_crs(epsg=31984)
-    except:
-        print("Erro ao ler transformadores.")
+        gdf_trafos = gpd.read_file(path_gdb, layer='UNTRMT', engine='pyogrio').to_crs(epsg=31984)
+        trafos_join = gpd.sjoin(gdf_trafos, gdf_voronoi[['NOM', 'geometry']], predicate="intersects")
+        ref_trafos = trafos_join[['COD_ID', 'NOM']].copy()
+        ref_trafos['COD_ID'] = ref_trafos['COD_ID'].astype(str)
+    except Exception as e:
+        print(f"Erro ao ler transformadores: {e}")
         return
 
-    # 3. Cruzar Trafo x Voronoi
-    print("Localizando transformadores...")
-    trafos_com_sub = gpd.sjoin(gdf_trafos, gdf_voronoi[['NOM', 'geometry']], how="inner", predicate="intersects")
-    trafos_lookup = trafos_com_sub[['COD_ID', 'NOM']].copy()
-    trafos_lookup['COD_ID'] = trafos_lookup['COD_ID'].astype(str)
-
-    # 4. Carregar Consumidores (GeoPandas -> DataFrame)
-    print("Lendo Consumidores...")
-    cols_uc = ['UNI_TR_MT', 'CLAS_SUB', 'ENE_12']
-    gdf_consumidores = gpd.read_file(caminho_gdb, layer='UCBT_tab', engine='pyogrio', columns=cols_uc)
-    df_consumidores = pd.DataFrame(gdf_consumidores) # Tira a geometria para ficar leve
-    df_consumidores['UNI_TR_MT'] = df_consumidores['UNI_TR_MT'].astype(str)
-
-    # 5. Merge Final
-    print("Consolidando dados...")
-    df_completo = pd.merge(df_consumidores, trafos_lookup, left_on='UNI_TR_MT', right_on='COD_ID', how='inner')
-    
-    # Mapeia as classes
-    df_completo['CLASSE_GERAL'] = df_completo['CLAS_SUB'].str[:2].map(MAPA_CLASSES).fillna('Outros')
-
-    # 6. Estatísticas
-    resultados = []
-    for subestacao, dados_sub in df_completo.groupby('NOM'):
-        total = len(dados_sub)
-        contagem = dados_sub['CLASSE_GERAL'].value_counts()
+    # 3. PROCESSAR CONSUMO (UCBT)
+    # Importante: Lemos PN_CON para poder cruzar com a geracao depois
+    print("3. Processando Consumidores...")
+    try:
+        gdf_uc = gpd.read_file(path_gdb, layer='UCBT_tab', engine='pyogrio', columns=['UNI_TR_MT', 'CLAS_SUB', 'ENE_12', 'PN_CON'])
+        df_uc = pd.DataFrame(gdf_uc).drop(columns='geometry', errors='ignore')
+        df_uc['UNI_TR_MT'] = df_uc['UNI_TR_MT'].astype(str)
         
+        # Link com Subestacao
+        df_cons_final = pd.merge(df_uc, ref_trafos, left_on='UNI_TR_MT', right_on='COD_ID', how='inner')
+        
+        # Cria a coluna TIPO (Residencial, Comercial...)
+        df_cons_final['TIPO'] = df_cons_final['CLAS_SUB'].str[:2].map(MAPA_CLASSES).fillna('Outros')
+        
+        # Cria um "Dicionario de Classes" para usar na geracao (PN_CON -> TIPO)
+        # Remove duplicatas de PN_CON para evitar erro no merge
+        mapa_pn_classe = df_cons_final[['PN_CON', 'TIPO']].drop_duplicates(subset='PN_CON').set_index('PN_CON')['TIPO']
+        
+    except Exception as e:
+        print(f"Erro consumidores: {e}")
+        return
+
+    # 4. PROCESSAR GERACAO DISTRIBUIDA (UGBT)
+    print("4. Processando Paineis Solares e Classificando...")
+    try:
+        # Lemos POT_INST e PN_CON
+        gdf_gd = gpd.read_file(path_gdb, layer='UGBT_tab', engine='pyogrio', columns=['UNI_TR_MT', 'POT_INST', 'PN_CON'])
+        df_gd = pd.DataFrame(gdf_gd).drop(columns='geometry', errors='ignore')
+        df_gd['UNI_TR_MT'] = df_gd['UNI_TR_MT'].astype(str)
+        
+        # Link com Subestacao
+        df_gd_final = pd.merge(df_gd, ref_trafos, left_on='UNI_TR_MT', right_on='COD_ID', how='inner')
+        
+        # A MAGICA: Cruzamos com o consumidor para saber se eh Residencial ou Comercial
+        df_gd_final['TIPO'] = df_gd_final['PN_CON'].map(mapa_pn_classe).fillna('Outros')
+        
+        print(f"   -> {len(df_gd_final)} usinas mapeadas e classificadas.")
+        
+    except Exception as e:
+        print(f"Aviso GD: {e}")
+        df_gd_final = pd.DataFrame(columns=['NOM', 'POT_INST', 'TIPO'])
+
+    # 5. CONSOLIDAR RELATORIO
+    print("5. Gerando JSON Detalhado...")
+    relatorio = []
+    
+    todas_subs = sorted(list(set(df_cons_final['NOM'].unique()) | set(df_gd_final['NOM'].unique())))
+
+    for sub in todas_subs:
+        dados_cons = df_cons_final[df_cons_final['NOM'] == sub]
+        dados_gd = df_gd_final[df_gd_final['NOM'] == sub]
+        
+        # Totais
+        total_clientes = len(dados_cons)
+        consumo_total = dados_cons['ENE_12'].sum() if not dados_cons.empty else 0
+        qtd_gd_total = len(dados_gd)
+        potencia_gd_total = dados_gd['POT_INST'].sum() if not dados_gd.empty else 0
+        
+        # Calculo de Risco
+        nivel_criticidade = "BAIXO"
+        if potencia_gd_total > 1000: nivel_criticidade = "MEDIO"
+        if potencia_gd_total > 5000: nivel_criticidade = "ALTO"
+
         stats = {
-            "subestacao": subestacao,
-            "total_clientes_estimados": int(total),
-            "perfil": {},
-            "consumo_total_kwh_mes": float(round(dados_sub['ENE_12'].sum(), 2))
+            "subestacao": sub,
+            "metricas_rede": {
+                "total_clientes": int(total_clientes),
+                "consumo_anual_mwh": float(round(consumo_total/1000, 2)),
+                "nivel_criticidade_gd": nivel_criticidade
+            },
+            # AQUI ESTA A NOVIDADE: SEPARADO POR TIPO
+            "geracao_distribuida": {
+                "total_unidades": int(qtd_gd_total),
+                "potencia_total_kw": float(round(potencia_gd_total, 2)),
+                "detalhe_por_classe": {}
+            },
+            "perfil_consumo": {}
         }
         
-        # AQUI MUDOU: Só pegamos o que interessa
-        for classe in ['Residencial', 'Comercial', 'Industrial']:
-            qtd = int(contagem.get(classe, 0))
-            pct = round((qtd / total) * 100, 2) if total > 0 else 0
-            stats["perfil"][classe] = {"qtd": qtd, "pct": pct}
+        # Preencher Consumo (Clientes)
+        for cls in ['Residencial', 'Comercial', 'Industrial', 'Rural', 'Poder Público', 'Outros']:
+            # Dados de Consumo (Quantidade de Clientes)
+            qtd_cli = int(dados_cons[dados_cons['TIPO'] == cls].shape[0])
+            if qtd_cli > 0:
+                stats["perfil_consumo"][cls] = {
+                    "qtd_clientes": qtd_cli,
+                    "pct": round((qtd_cli/total_clientes)*100, 1)
+                }
             
-        resultados.append(stats)
-
-    with open(caminho_saida, 'w', encoding='utf-8') as f:
-        json.dump(resultados, f, indent=4, ensure_ascii=False)
+            # Dados de Geracao (Potencia KW) - O QUE VOCE PEDIU
+            pot_classe = dados_gd[dados_gd['TIPO'] == cls]['POT_INST'].sum()
+            if pot_classe > 0:
+                stats["geracao_distribuida"]["detalhe_por_classe"][cls] = float(round(pot_classe, 2))
         
-    print(f"Dados Prontos! Arquivo salvo em: {caminho_saida}")
+        relatorio.append(stats)
+
+    with open(path_saida, 'w', encoding='utf-8') as f:
+        json.dump(relatorio, f, indent=4, ensure_ascii=False)
+        
+    print(f"SUCESSO! Relatorio atualizado em: {path_saida}")
 
 if __name__ == "__main__":
     analisar_mercado()
