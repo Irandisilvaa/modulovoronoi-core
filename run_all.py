@@ -62,7 +62,7 @@ def start_api():
     log_api = open(os.path.join(DIR_LOGS, "api_service.log"), "w")
     
     processo = subprocess.Popen(
-        [PYTHON_EXEC, "-m", "uvicorn", "src.api:app", "--host", "127.0.0.1", "--port", "8000"],
+        [PYTHON_EXEC, "-m", "uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=DIR_RAIZ,
         env=get_env_with_src(),
         stdout=log_api, 
