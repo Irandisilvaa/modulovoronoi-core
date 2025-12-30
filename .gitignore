@@ -16,3 +16,8 @@ dados/
 .DS_Store
 
 mapa_voronoi_preview.png 
+
+
+# Logs do Sistema
+logs/
+*.log
