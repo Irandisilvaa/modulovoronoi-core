@@ -1,18 +1,19 @@
 import streamlit as st
-import geopandas as gpd
 import pandas as pd
-import json
 import plotly.express as px
 import folium
 from streamlit_folium import st_folium
 import os
+import sys
 import requests
 from datetime import date
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from utils import carregar_dados_cache
 
 st.set_page_config(layout="wide", page_title="GridScope")
 
 CATEGORIAS_ALVO = ['Residencial', 'Comercial', 'Industrial']
-
 CORES_MAPA = {
     'Residencial': '#007bff', 
     'Comercial': '#ffc107', 
@@ -20,20 +21,21 @@ CORES_MAPA = {
 }
 
 @st.cache_data
-def carregar_dados_base():
-    if os.path.exists("subestacoes_logicas_aracaju.geojson"):
-        caminho_geo = "subestacoes_logicas_aracaju.geojson"
-        caminho_json = "perfil_mercado_aracaju.json"
-    else:
-        caminho_geo = "../subestacoes_logicas_aracaju.geojson"
-        caminho_json = "../perfil_mercado_aracaju.json"
-
-    gdf = gpd.read_file(caminho_geo)
-    with open(caminho_json, 'r', encoding='utf-8') as f:
-        dados_mercado = json.load(f)
-    return gdf, pd.DataFrame(dados_mercado)
+def obter_dados_dashboard():
+    """
+    Wrapper para carregar dados usando a função centralizada do utils.py
+    Transforma a lista de dicionários em DataFrame para facilitar o uso no Dashboard.
+    """
+    try:
+        gdf, dados_lista = carregar_dados_cache()
+        return gdf, pd.DataFrame(dados_lista)
+    except Exception as e:
+        raise Exception(f"Erro ao carregar dados base: {e}")
 
 def consultar_simulacao(subestacao, data_escolhida):
+    """
+    Consulta a API local para simulação em tempo real.
+    """
     data_str = data_escolhida.strftime("%d-%m-%Y")
     url = f"http://127.0.0.1:8000/simulacao/{subestacao}?data={data_str}"
     try:
@@ -45,13 +47,13 @@ def consultar_simulacao(subestacao, data_escolhida):
     return None
 
 try:
-    gdf, df_mercado = carregar_dados_base()
+    gdf, df_mercado = obter_dados_dashboard()
 except Exception as e:
-    st.error(f"Erro ao carregar arquivos: {e}")
+    st.error(f"Erro Crítico: {e}")
     st.stop()
 
 st.sidebar.title("GridScope")
-st.sidebar.write("Centro de Operacoes")
+st.sidebar.caption("Centro de Operacoes Integrado")
 
 lista_subs = sorted(gdf['NOM'].unique())
 escolha = st.sidebar.selectbox("Selecione a Subestacao:", lista_subs)
@@ -79,7 +81,6 @@ c3.metric("Usinas Solares", dados_gd.get('total_unidades', 0))
 c4.metric("Potencia Instalada (kW)", f"{dados_gd.get('potencia_total_kw', 0):,.0f}")
 
 st.divider()
-
 st.header(f"Simulacao VPP: {data_analise.strftime('%d/%m/%Y')}")
 
 dados_simulacao = consultar_simulacao(escolha, data_analise)
@@ -96,7 +97,7 @@ if dados_simulacao:
     
     res1, res2 = st.columns([1, 2])
     
-    geracao = dados_simulacao.get('geracao_estimada_hoje_mwh', dados_simulacao.get('geracao_estimada_mwh'))
+    geracao = dados_simulacao.get('geracao_estimada_mwh', 0)
     
     delta_cor = "normal"
     if geracao > 100: delta_cor = "inverse"
@@ -111,45 +112,61 @@ if dados_simulacao:
         st.warning(msg_impacto)
     else:
         st.success(msg_impacto)
-        
 else:
-    st.warning("API Offline ou Inacessivel.")
+    st.warning("⚠️ API de Simulação Offline. Inicie o servidor (api.py) para ver previsões em tempo real.")
 
 st.divider()
-
 col_graf, col_map = st.columns([1.5, 2])
 
 with col_graf:
     st.subheader("Perfil de Consumo")
-    df_cons = pd.DataFrame([{"Segmento": k, "Clientes": v["qtd_clientes"]} for k,v in perfil.items() if k in CATEGORIAS_ALVO])
+    dados_pie = [{"Segmento": k, "Clientes": v["qtd_clientes"]} for k,v in perfil.items() if k in CATEGORIAS_ALVO]
+    df_cons = pd.DataFrame(dados_pie)
+    
     if not df_cons.empty:
-        fig_cons = px.pie(df_cons, values='Clientes', names='Segmento', hole=0.4, color='Segmento', color_discrete_map=CORES_MAPA)
+        fig_cons = px.pie(df_cons, values='Clientes', names='Segmento', hole=0.4, 
+                          color='Segmento', color_discrete_map=CORES_MAPA)
         fig_cons.update_layout(height=250, margin=dict(t=0, b=0, l=0, r=0))
         st.plotly_chart(fig_cons, use_container_width=True)
     
     st.subheader("Potencia por Classe (kW)")
     if detalhe_gd:
-        df_gd_class = pd.DataFrame([{"Segmento": k, "Potencia_kW": v} for k,v in detalhe_gd.items() if k in CATEGORIAS_ALVO and v > 0])
+        dados_bar = [{"Segmento": k, "Potencia_kW": v} for k,v in detalhe_gd.items() if k in CATEGORIAS_ALVO and v > 0]
+        df_gd_class = pd.DataFrame(dados_bar)
+        
         if not df_gd_class.empty:
-            fig_gd = px.bar(df_gd_class, x='Segmento', y='Potencia_kW', color='Segmento', text_auto='.2s', color_discrete_map=CORES_MAPA)
+            fig_gd = px.bar(df_gd_class, x='Segmento', y='Potencia_kW', color='Segmento', 
+                            text_auto='.2s', color_discrete_map=CORES_MAPA)
             fig_gd.update_layout(height=300, showlegend=False)
             st.plotly_chart(fig_gd, use_container_width=True)
         else:
-            st.info("Sem GD nessas categorias.")
+            st.info("Sem GD significativa nessas categorias.")
 
 with col_map:
     st.subheader("Mapa da Area")
-    centro_lat = area_sel.geometry.centroid.y.values[0]
-    centro_lon = area_sel.geometry.centroid.x.values[0]
-    m = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles="OpenStreetMap")
-    
-    def style_function(feature):
-        nome = feature['properties']['NOM']
-        dado = next((x for x in df_mercado.to_dict('records') if x['subestacao'] == nome), None)
-        risco = dado.get('metricas_rede', {}).get('nivel_criticidade_gd', 'BAIXO') if dado else 'BAIXO'
-        cor = {'BAIXO': '#2ecc71', 'MÉDIO': '#f1c40f', 'ALTO': '#e74c3c'}.get(risco, '#2ecc71')
-        opac = 0.6 if nome == escolha else 0.2
-        return {'fillColor': cor, 'color': 'black', 'weight': 2, 'fillOpacity': opac}
+    if not area_sel.empty:
+        centro_lat = area_sel.geometry.centroid.y.values[0]
+        centro_lon = area_sel.geometry.centroid.x.values[0]
+        m = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles="OpenStreetMap")
+        
+        def style_function(feature):
+            nome = feature['properties']['NOM']
+            dado = df_mercado[df_mercado['subestacao'] == nome]
+            risco = 'BAIXO'
+            if not dado.empty:
+                metricas_dict = dado.iloc[0].get('metricas_rede', {})
+                risco = metricas_dict.get('nivel_criticidade_gd', 'BAIXO')
+            
+            cor = {'BAIXO': '#2ecc71', 'MEDIO': '#f1c40f', 'ALTO': '#e74c3c'}.get(risco, '#2ecc71')
+            
+            opac = 0.6 if nome == escolha else 0.2
+            weight = 3 if nome == escolha else 1
+            return {'fillColor': cor, 'color': 'black', 'weight': weight, 'fillOpacity': opac}
 
-    folium.GeoJson(gdf, style_function=style_function, tooltip=folium.GeoJsonTooltip(fields=['NOM'])).add_to(m)
-    st_folium(m, use_container_width=True, height=600)
+        folium.GeoJson(
+            gdf, 
+            style_function=style_function, 
+            tooltip=folium.GeoJsonTooltip(fields=['NOM'], aliases=['Subestação:'])
+        ).add_to(m)
+        
+        st_folium(m, use_container_width=True, height=600)

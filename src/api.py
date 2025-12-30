@@ -2,14 +2,20 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import json
 import os
+import sys
 import requests
 from datetime import datetime, date
 from typing import Dict, Optional, List, Any
+from shapely.geometry import mapping
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from config import PATH_GEOJSON
+from utils import carregar_dados_cache, fundir_dados_geo_mercado
 
 app = FastAPI(
     title="GridScope API",
-    description="API Avancada",
-    version="4.1"
+    description="API Avançada de Monitoramento de Rede",
+    version="4.2"
 )
 
 class MetricasRede(BaseModel):
@@ -44,26 +50,6 @@ class SimulacaoSolar(BaseModel):
     potencia_instalada_kw: float
     geracao_estimada_mwh: float
     impacto_na_rede: str
-
-def carregar_dados_completos():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path_stats = os.path.join(base_dir, "perfil_mercado_aracaju.json")
-    path_geo = os.path.join(base_dir, "subestacoes_logicas_aracaju.geojson")
-    
-    if not os.path.exists(path_stats): raise FileNotFoundError("Estatisticas off")
-    if not os.path.exists(path_geo): raise FileNotFoundError("GeoJSON off")
-
-    with open(path_stats, 'r', encoding='utf-8') as f: stats_list = json.load(f)
-    with open(path_geo, 'r', encoding='utf-8') as f: geo_data = json.load(f)
-
-    geo_map = {f['properties'].get('NOM'): f['geometry'] for f in geo_data['features'] if f['properties'].get('NOM')}
-
-    dados_finais = []
-    for item in stats_list:
-        sub_nome = item['subestacao']
-        item['geometry'] = geo_map.get(sub_nome)
-        dados_finais.append(item)
-    return dados_finais
 
 def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
     hoje = date.today()
@@ -111,33 +97,38 @@ def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
 
 @app.get("/", tags=["Status"])
 def home():
-    return {"status": "online", "system": "GridScope Core"}
+    return {"status": "online", "system": "GridScope Core 4.2"}
 
 @app.get("/mercado/ranking", response_model=List[SubestacaoData], tags=["Core"])
 def obter_dados_completos():
-    return carregar_dados_completos()
+    try:
+        gdf, dados_mercado = carregar_dados_cache()
+        dados_fundidos = fundir_dados_geo_mercado(gdf, dados_mercado)
+        
+        for item in dados_fundidos:
+            if item.get('geometry'):
+                item['geometry'] = mapping(item['geometry'])
+                
+        return dados_fundidos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 @app.get("/mercado/geojson", tags=["Core"])
 def obter_apenas_geojson():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path_geo = os.path.join(base_dir, "subestacoes_logicas_aracaju.geojson")
-    if os.path.exists(path_geo):
-        with open(path_geo, 'r', encoding='utf-8') as f: return json.load(f)
-    raise HTTPException(status_code=404)
+    if os.path.exists(PATH_GEOJSON):
+        with open(PATH_GEOJSON, 'r', encoding='utf-8') as f: return json.load(f)
+    raise HTTPException(status_code=404, detail="GeoJSON não encontrado")
 
 @app.get("/simulacao/{nome_subestacao}", response_model=SimulacaoSolar, tags=["Simulacao"])
 def simular_geracao(
     nome_subestacao: str, 
     data: Optional[str] = Query(None, description="Data: DD-MM-AAAA ou DD/MM/AAAA")
 ):
-    nome_sub_tratado = nome_subestacao.upper()
-    
     data_obj = date.today()
     if data:
         data_clean = data.replace("/", "-").replace(" ", "-")
         formatos = ["%Y-%m-%d", "%d-%m-%Y"]
         parsed = False
-        
         for fmt in formatos:
             try:
                 data_obj = datetime.strptime(data_clean, fmt).date()
@@ -145,23 +136,29 @@ def simular_geracao(
                 break
             except ValueError:
                 continue
-        
         if not parsed:
             raise HTTPException(status_code=400, detail="Formato invalido. Use DD-MM-AAAA")
 
     try:
-        todos_dados = carregar_dados_completos()
-        alvo = next((x for x in todos_dados if x['subestacao'] == nome_sub_tratado), None)
-        if not alvo: raise HTTPException(status_code=404, detail="Subestacao nao encontrada")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro interno dados")
+        gdf, dados_mercado = carregar_dados_cache()
+        dados_fundidos = fundir_dados_geo_mercado(gdf, dados_mercado)
+        
+        alvo = next((x for x in dados_fundidos if x['subestacao'].upper() == nome_subestacao.upper()), None)
+        if not alvo: 
+            raise HTTPException(status_code=404, detail="Subestacao nao encontrada")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro dados: {e}")
 
-    lat, lon = -10.9472, -37.0731
+    lat, lon = -10.9472, -37.0731 # Default Aracaju
     try:
-        coords = alvo['geometry']['coordinates'][0][0]
-        lon, lat = coords[0], coords[1]
-    except: pass
+        geom = alvo.get('geometry')
+        if geom:
+            centroide = geom.centroid
+            lon, lat = centroide.x, centroide.y
+    except Exception as e:
+        print(f"Aviso Geometria: {e}")
 
+    # 4. Simulação Solar
     irradiacao, temp_max, desc_tempo, fonte = obter_clima_avancado(lat, lon, data_obj)
     
     perda_termica = 0.0
@@ -186,7 +183,7 @@ def simular_geracao(
         impacto = "BAIXA GERACAO: Rede suportara carga maxima."
     
     return {
-        "subestacao": nome_sub_tratado,
+        "subestacao": alvo['subestacao'],
         "data_referencia": data_obj.strftime("%d/%m/%Y"),
         "fonte_dados": fonte,
         "condicao_tempo": desc_tempo,
