@@ -14,3 +14,5 @@ dados/
 
 # Ignorar arquivos do sistema operacional
 .DS_Store
+
+mapa_voronoi_preview.png 
