@@ -24,3 +24,4 @@ perfil_mercado_aracaju.json
 # Logs do Sistema
 logs/
 *.log
+cache/
