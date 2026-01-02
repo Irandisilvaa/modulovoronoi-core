@@ -1,0 +1,24 @@
+name: Monitor ANEEL BDGD
+
+on:
+  schedule:
+    # Roda no dia 1 e 15 de cada mês às 08:00
+    - cron: '0 8 1,15 * *'
+  workflow_dispatch: # Permite rodar manualmente clicando num botão
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Instalar Requests
+        run: pip install requests
+        
+      - name: Rodar Verificador
+        run: python src/etl/monitor_aneel.py
