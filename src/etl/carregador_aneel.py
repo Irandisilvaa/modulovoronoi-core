@@ -35,7 +35,7 @@ def carregar_subestacoes():
 
         cols_finais = ['COD_ID', 'NOM', 'geometry']
         if 'COD_ID' not in gdf.columns and 'ID' in gdf.columns:
-             gdf = gdf.rename(columns={'ID': 'COD_ID'})
+            gdf = gdf.rename(columns={'ID': 'COD_ID'})
 
         cols_existentes = [c for c in cols_finais if c in gdf.columns]
         gdf_limpo = gdf[cols_existentes].copy()
