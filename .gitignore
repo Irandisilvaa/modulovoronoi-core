@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 venv/
 .env
-
+.pkl
 # IGNORAR DADOS (Isso garante que o BDGD não vá para o GitHub)
 dados/
 *.zip
