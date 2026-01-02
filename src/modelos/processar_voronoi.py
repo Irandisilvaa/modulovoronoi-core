@@ -8,13 +8,24 @@ from scipy.spatial import Voronoi
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+# Importações do projeto
 from config import CIDADE_ALVO, CRS_PROJETADO, PATH_GEOJSON, DIR_RAIZ
 from etl.carregador_aneel import carregar_subestacoes
+
+# --- CONFIGURAÇÃO PARA ACESSAR O WORKER DE IA ---
+sys.path.append(os.path.join(DIR_RAIZ, "src", "ai"))
+
+try:
+    from src.ai.train_model import treinar_modelo_subestacao
+    WORKER_ATIVO = True
+except ImportError:
+    print("⚠️ AVISO: 'train_model.py' não encontrado em src/ai/.")
+    print("   -> O mapa será gerado, mas os modelos de IA não serão treinados.")
+    WORKER_ATIVO = False
 
 def voronoi_finite_polygons_2d(vor, radius=None):
     """
     Algoritmo matemático para reconstruir regiões de Voronoi finitas.
-    (Mantido original, apenas limpeza de estilo)
     """
     if vor.points.shape[1] != 2:
         raise ValueError("Requires 2D input")
@@ -64,10 +75,12 @@ def voronoi_finite_polygons_2d(vor, radius=None):
     return new_regions, np.asarray(new_vertices)
 
 def main():
-    print(f"--- INICIANDO GERAÇÃO DE TERRITÓRIOS (VORONOI) ---")
+    print(f"--- 🗺️ INICIANDO GERAÇÃO DE TERRITÓRIOS (VORONOI) ---")
     print(f"Alvo: {CIDADE_ALVO}")
     
+    # 1. Carregar Dados Brutos
     subs_raw = carregar_subestacoes()
+    
     print(f"Baixando limites geográficos via OpenStreetMap...")
     try:
         limite_cidade = ox.geocode_to_gdf(CIDADE_ALVO)
@@ -89,6 +102,7 @@ def main():
         print("ERRO: Menos de 2 subestações. Voronoi requer no mínimo 2 pontos.")
         sys.exit(1)
 
+    # 2. Projeção e Cálculo Matemático
     subs_proj = subs_cidade.to_crs(CRS_PROJETADO)
     pontos_proj = subs_proj.copy()
     pontos_proj['geometry'] = subs_proj.geometry.centroid
@@ -111,17 +125,19 @@ def main():
     except:
         subs_logicas = gpd.clip(voronoi_gdf, limite_proj)
 
+    # Junção Espacial para recuperar Nomes e IDs
     subs_logicas_finais = gpd.sjoin(subs_logicas, pontos_proj, how="inner", predicate="contains")
     
     colunas_manter = ['geometry', 'NOM', 'COD_ID']
     cols = [c for c in colunas_manter if c in subs_logicas_finais.columns]
     subs_logicas_finais = subs_logicas_finais[cols]
 
+    # 3. Salvar GeoJSON (Para o Frontend)
     print(f"Salvando resultado em: {PATH_GEOJSON}")
     subs_logicas_finais.to_crs(epsg=4326).to_file(PATH_GEOJSON, driver='GeoJSON')
     print("✅ GeoJSON gerado com sucesso!")
 
-
+    # 4. Gerar Imagem de Preview (Para Auditoria Visual)
     try:
         print("Gerando mapa visual (PNG)...")
         fig, ax = plt.subplots(figsize=(10, 10))
@@ -138,10 +154,37 @@ def main():
         caminho_img = os.path.join(DIR_RAIZ, "mapa_voronoi_preview.png")
         plt.savefig(caminho_img, dpi=150, bbox_inches='tight')
         print(f"📸 Mapa salvo em: {caminho_img}")
-        plt.close() # Fecha a figura para liberar memória
-        
+        plt.close()
     except Exception as e:
         print(f"Aviso: Não foi possível gerar a imagem PNG: {e}")
+
+    # 5. FASE 2: TREINAMENTO DA IA EM MASSA
+    if WORKER_ATIVO:
+        print("\n" + "="*45)
+        print("🤖 FASE 2: ORQUESTRADOR DE TREINAMENTO (GRID AI)")
+        print("="*45)
+        print("O sistema agora vai gerar um cérebro de IA para cada região...")
+        
+        total = len(subs_logicas_finais)
+        sucessos = 0
+        
+        for idx, row in subs_logicas_finais.iterrows():
+            nome = row['NOM']
+            # Garante que pega a coluna certa do ID
+            cod_id = row['COD_ID'] if 'COD_ID' in row else row.get('ID', 'N/A')
+            
+            print(f"\n⚙️ [{idx+1}/{total}] Processando: {nome} (ID: {cod_id})...")
+            
+            try:
+                # Chama o worker que criamos no passo anterior
+                if treinar_modelo_subestacao(nome, cod_id):
+                    sucessos += 1
+            except Exception as e:
+                print(f"❌ Erro ao treinar modelo para {nome}: {e}")
+        
+        print("\n" + "-"*45)
+        print(f"✅ FINALIZADO: {sucessos} de {total} modelos de IA foram gerados.")
+        print(f"📂 Os arquivos .pkl estão na pasta 'src/ai/models/'")
 
 if __name__ == "__main__":
     main()

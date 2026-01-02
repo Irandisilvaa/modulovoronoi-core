@@ -305,5 +305,73 @@ with col_map:
 
     folium.GeoJson(gdf, style_function=style_fn, tooltip=folium.GeoJsonTooltip(fields=["NOM"], aliases=["Subestação:"])).add_to(m)
     st_folium(m, use_container_width=True, height=400)
+    
+# --- ROW 5: TABELA DETALHADA E RECOMENDAÇÕES (NOVO) ---
+st.divider()
+st.header("📋 Relatório Técnico & Ações")
+
+col_table, col_actions = st.columns([2, 1])
+
+with col_table:
+    st.subheader("Dados Consolidados")
+    # Criação de um DataFrame limpo para visualização
+    dados_consolidados = {
+        "Parâmetro": [
+            "Subestação Alvo",
+            "Consumo Anual Total",
+            "Potência GD Instalada",
+            "Qtd. Usinas Solares",
+            "Total Clientes",
+            "Criticidade da Rede"
+        ],
+        "Valor": [
+            str(escolha),
+            f"{formatar_br(metricas.get('consumo_anual_mwh', 0))} MWh",
+            f"{formatar_br(dados_gd.get('potencia_total_kw', 0))} kW",
+            f"{dados_gd.get('total_unidades', 0)} unid.",
+            f"{metricas.get('total_clientes', 0)}",
+            metricas.get('nivel_criticidade_gd', 'NORMAL')
+        ]
+    }
+    df_view = pd.DataFrame(dados_consolidados)
+    st.dataframe(
+        df_view, 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "Parâmetro": st.column_config.TextColumn("Indicador", width="medium"),
+            "Valor": st.column_config.TextColumn("Medição Atual", width="medium")
+        }
+    )
+
+with col_actions:
+    st.subheader("Diagnóstico Automático")
+    
+    # Lógica simples para recomendação baseada na penetração solar (exemplo)
+    potencia_kw = dados_gd.get('potencia_total_kw', 0)
+    # Estimativa grosseira de geração anual (kW * 4.5h * 365) / 1000 = MWh
+    geracao_est_mwh = (potencia_kw * 4.5 * 365) / 1000
+    consumo_mwh = metricas.get('consumo_anual_mwh', 1) # Evita div por zero
+    
+    penetracao = (geracao_est_mwh / consumo_mwh) * 100
+    
+    st.write(f"**Nível de Penetração GD:** {penetracao:.1f}%")
+    
+    if penetracao > 25:
+        st.warning("⚠️ **Saturação Alta:** Risco de inversão de fluxo. Recomenda-se estudo de baterias (BESS).")
+    elif penetracao > 10:
+        st.info("ℹ️ **Atenção:** Monitorar horários de pico solar (11h-13h).")
+    else:
+        st.success("✅ **Rede Estável:** Capacidade disponível para novas conexões.")
+
+    # Botão de Exportação
+    csv = df_view.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Baixar Relatório CSV",
+        data=csv,
+        file_name=f"relatorio_{escolha}_{date.today()}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
 
 st.caption(f"GridScope v4.6 Enterprise | Dados atualizados em: {date.today().strftime('%d/%m/%Y')}")
