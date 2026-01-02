@@ -7,32 +7,24 @@ import zipfile
 import shutil
 from datetime import datetime
 
-# Setup de caminhos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import DIR_DADOS, ANEEL_API_HUB_URL, DISTRIBUIDORA_ALVO
 
 def baixar_e_extrair(url, destino):
-    """
-    Baixa o arquivo e tenta descompactar.
-    """
     print(f"\n⬇️  INICIANDO DOWNLOAD...")
     print(f"🔗 Origem: {url}")
     
     caminho_zip = os.path.join(destino, "temp_download.zip")
     
     try:
-        # Headers fake para evitar bloqueio
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         
         with requests.get(url, stream=True, headers=headers, timeout=120) as r:
             r.raise_for_status()
             
-            # Verificação de conteúdo
             ct = r.headers.get('content-type', '').lower()
             if 'html' in ct:
                 print(f"⚠️  ALERTA: O link retornou uma página HTML ({ct}). Pode não ser um ZIP direto.")
-                # Se for a página /explore, tentamos achar o botão de download (simples)
-                # Mas geralmente a URL do metadado 'url' já é o binário.
             
             total_size = int(r.headers.get('content-length', 0))
             baixado = 0
@@ -48,7 +40,6 @@ def baixar_e_extrair(url, destino):
 
         if not zipfile.is_zipfile(caminho_zip):
             print("❌ ERRO: O arquivo baixado não é um ZIP válido.")
-            # Debug: mostra o início do arquivo se falhar
             with open(caminho_zip, 'r', errors='ignore') as f:
                 print(f"    Conteúdo (início): {f.read(300)}...")
             os.remove(caminho_zip)
@@ -60,9 +51,7 @@ def baixar_e_extrair(url, destino):
         with zipfile.ZipFile(caminho_zip, 'r') as zip_ref:
             zip_ref.extractall(destino)
             for nome in zip_ref.namelist():
-                # Procura pasta .gdb
                 if '.gdb' in nome:
-                    # Pega a pasta raiz do gdb
                     partes = nome.split('/')
                     for p in partes:
                         if p.endswith('.gdb'):
@@ -111,7 +100,6 @@ def verificar_aneel():
             props = item.get('properties', {})
             nome = props.get('title', 'Sem Nome').upper()
             
-            # Filtro básico
             if all(t in nome for t in termos):
                 candidatos.append(props)
 
@@ -119,7 +107,6 @@ def verificar_aneel():
             print("❌ Nenhum arquivo compatível.")
             return
 
-        # Ordenação: Ano > Link > Nome
         def criterio(item):
             nome = item.get('title', '')
             ano = 0
@@ -131,31 +118,22 @@ def verificar_aneel():
         candidatos.sort(key=criterio, reverse=True)
         vencedor = candidatos[0]
 
-        # --- AQUI ESTÁ A CORREÇÃO DE URL ---
         nome_final = vencedor.get('title')
         id_arquivo = vencedor.get('id')
         data_raw = vencedor.get('updated')
-        url_original = vencedor.get('url') # Link que vem do JSON
+        url_original = vencedor.get('url')
         
-        # Lógica de decisão de URL:
         if " - Link" in nome_final:
-            # Se for do tipo 'Link', a URL de download costuma estar no campo 'url'
-            # Mas às vezes aponta para a página de 'explore'.
-            # Vamos tentar transformar a URL de 'documents' para 'download' se necessário
             if '/documents/' in url_original:
-                # Transforma: .../documents/{id}/explore -> .../documents/{id}/download
-                # Ou tenta usar a API de download direto do Hub
                 url_download = f"https://www.arcgis.com/sharing/rest/content/items/{id_arquivo}/data"
             else:
                 url_download = url_original
         else:
-            # Se for Dataset padrão
             url_download = f"https://dadosabertos-aneel.opendata.arcgis.com/datasets/{id_arquivo}_0.geodatabase"
 
         print(f"\n🏆 ARQUIVO VENCEDOR:")
         print(f"📂 {nome_final}")
         
-        # --- Lógica de Download ---
         arquivo_ctrl = os.path.join(DIR_DADOS, "metadata_aneel.json")
         baixar = True
         
