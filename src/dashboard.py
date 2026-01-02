@@ -83,7 +83,6 @@ def consultar_ia_predict(payload):
 def obter_previsao_ia_cached(subestacao, data_str, potencia_gd, lat, lon):
     """
     Realiza o ETL e a consulta à IA.
-    CORREÇÃO APLICADA: Converte anual para mensal antes de enviar.
     """
     # 1. Busca dados reais do histórico (ETL)
     dados_reais = buscar_dados_reais_para_ia(subestacao)
@@ -94,14 +93,14 @@ def obter_previsao_ia_cached(subestacao, data_str, potencia_gd, lat, lon):
     else:
         consumo_anual = 6000.0 # Fallback seguro se não achar no banco
     
-    # 2. Converte Anual para Média Mensal (Pois a API agora pede mensal)
+    # 2. Converte Anual para Média Mensal
     consumo_mes_estimado = consumo_anual / 12
 
-    # 3. Monta Payload (CORRIGIDO PARA API NOVA)
+    # 3. Monta Payload
     payload = {
         "data_alvo": data_str,
         "potencia_gd_kw": float(potencia_gd),
-        "consumo_mes_alvo_mwh": float(consumo_mes_estimado), # <--- CORREÇÃO AQUI
+        "consumo_mes_alvo_mwh": float(consumo_mes_estimado),
         "lat": float(lat),
         "lon": float(lon)
     }
@@ -121,8 +120,17 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2991/2991474.png", widt
 st.sidebar.title("GridScope Core")
 st.sidebar.divider()
 
+# --- CORREÇÃO APLICADA AQUI ---
+# Só mostramos na lista as subestações que REALMENTE existem no mapa (GDF)
+# Isso elimina as subestações que não geraram Voronoi ou foram filtradas no ETL
+subs_no_mapa = gdf["NOM"].unique()
+
+# Filtra o dataframe de dados para conter apenas o que tem no mapa
+df_mercado = df_mercado[df_mercado["subestacao"].isin(subs_no_mapa)]
+
 lista_subs = sorted(df_mercado["subestacao"].unique())
 escolha = st.sidebar.selectbox("Selecione a Subestação:", lista_subs)
+# ------------------------------
 
 # Input de Data Unificado
 data_analise = st.sidebar.date_input("Data da Análise:", date.today())
@@ -203,10 +211,8 @@ st.divider()
 # --- ROW 3: IA DUCK CURVE (AUTOMÁTICO) ---
 st.header("🧠 Análise Preditiva (AI Duck Curve)")
 
-# Spinner processa automaticamente ao mudar a data
 with st.spinner(f"🤖 IA: Recalculando fluxo energético para {data_analise.strftime('%d/%m')}..."):
     
-    # Chama a função CACHED (Se mudar a data e voltar, é instantâneo)
     res_ia, erro_ia = obter_previsao_ia_cached(
         subestacao=escolha,
         data_str=str(data_analise),
@@ -314,7 +320,6 @@ col_table, col_actions = st.columns([2, 1])
 
 with col_table:
     st.subheader("Dados Consolidados")
-    # Criação de um DataFrame limpo para visualização
     dados_consolidados = {
         "Parâmetro": [
             "Subestação Alvo",
@@ -347,11 +352,9 @@ with col_table:
 with col_actions:
     st.subheader("Diagnóstico Automático")
     
-    # Lógica simples para recomendação baseada na penetração solar (exemplo)
     potencia_kw = dados_gd.get('potencia_total_kw', 0)
-    # Estimativa grosseira de geração anual (kW * 4.5h * 365) / 1000 = MWh
     geracao_est_mwh = (potencia_kw * 4.5 * 365) / 1000
-    consumo_mwh = metricas.get('consumo_anual_mwh', 1) # Evita div por zero
+    consumo_mwh = metricas.get('consumo_anual_mwh', 1) 
     
     penetracao = (geracao_est_mwh / consumo_mwh) * 100
     
@@ -364,7 +367,6 @@ with col_actions:
     else:
         st.success("✅ **Rede Estável:** Capacidade disponível para novas conexões.")
 
-    # Botão de Exportação
     csv = df_view.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Baixar Relatório CSV",
