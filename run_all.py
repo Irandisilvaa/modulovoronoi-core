@@ -151,7 +151,9 @@ if __name__ == "__main__":
         
         # 2. Processamento Geoespacial e Mercado
         run_step("processar_voronoi.py", "Gerando Territorios (Voronoi)")
-        # run_step("analise_mercado.py", "Cruzando Dados de Mercado") # Descomente se necessário
+        
+        # --- CORREÇÃO AQUI: Script agora roda obrigatoriamente ---
+        run_step("analise_mercado.py", "Cruzando Dados de Mercado") 
         
         # 3. Treinamento de IA (Verifica se precisa treinar ou se já existe)
         run_ai_training("train_model.py", "Treinamento Modelo Duck Curve", forcar_treino=False)
