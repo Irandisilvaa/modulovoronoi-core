@@ -2,12 +2,8 @@ import pandas as pd
 import geopandas as gpd
 import os
 import sys
-import random
-import time
 
-# --- CONFIGURAÇÃO DE CAMINHOS ---
-# Tenta importar o caminho do config, ou usa manual
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Tenta importar caminho do config, senão usa padrão
 try:
     from config import PATH_GDB
 except ImportError:
@@ -15,140 +11,143 @@ except ImportError:
     PATH_GDB = r"C:\Users\irand\Documents\gridscope-core\data\raw\SE_2023.gdb"
 
 def buscar_dados_reais_para_ia(nome_subestacao):
-    """
-    Função Robusta para IA:
-    1. Tenta encontrar a SUB e seus Circuitos (CTMT).
-    2. Tenta encontrar Clientes (UCBT) ligados a esses Circuitos.
-    3. Retorna o perfil MENSAL detalhado para alimentar a sazonalidade da IA.
-    """
-    print(f"\n🤖 IA: Buscando dados reais no BDGD para '{nome_subestacao}'...")
+    print(f"\n🤖 IA: Analisando DNA da subestação '{nome_subestacao}'...")
     
     if not os.path.exists(PATH_GDB):
-        return {"erro": "Arquivo GDB não encontrado."}
+        return {"erro": "GDB não encontrado"}
 
     try:
-        # --- PASSO 1: Descobrir o ID da Subestação ---
-        # Lê apenas colunas essenciais para ser rápido
-        gdf_sub = gpd.read_file(PATH_GDB, layer='SUB', engine='pyogrio', columns=['NOM', 'COD_ID'])
+        # --- 1. IDENTIFICAÇÃO DA SUBESTAÇÃO ---
+        # Lê apenas 1 linha para pegar nomes das colunas da camada SUB
+        sample_sub = gpd.read_file(PATH_GDB, layer='SUB', engine='pyogrio', rows=1)
+        cols_sub = sample_sub.columns
         
-        # Normaliza nomes para busca
-        nome_alvo_norm = nome_subestacao.strip().upper()
+        # Acha dinamicamente a coluna de NOME e ID
+        col_nome_sub = next((c for c in cols_sub if c.upper() in ['NOM', 'NOME', 'NAME', 'PAC_1']), None)
+        col_id_sub = next((c for c in cols_sub if c.upper() in ['COD_ID', 'ID', 'CODIGO', 'SUB']), None)
         
-        # Filtra a subestação pelo nome
-        filtro = gdf_sub['NOM'].str.upper().str.contains(nome_alvo_norm, na=False)
-        sub_encontrada = gdf_sub[filtro]
-        
-        if sub_encontrada.empty:
-            print(f"   ⚠️ Subestação '{nome_subestacao}' não achada. Usando fallback.")
-            return gerar_estimativa_fallback(nome_subestacao)
-        
-        id_sub = sub_encontrada.iloc[0]['COD_ID']
-        nome_real = sub_encontrada.iloc[0]['NOM']
-        print(f"   ✅ Subestação localizada: {nome_real} (ID: {id_sub})")
+        if not col_nome_sub: return {"erro": "Coluna de nome da SUB não encontrada"}
 
-        # --- PASSO 2: Achar os Alimentadores (CTMT) ---
-        # A "Ponte": Subestação -> CTMT -> Cliente
-        print("   🔍 Mapeando circuitos (CTMT) da subestação...")
+        # Busca a subestação específica
+        gdf_sub = gpd.read_file(PATH_GDB, layer='SUB', engine='pyogrio', columns=[col_nome_sub, col_id_sub])
+        filtro = gdf_sub[col_nome_sub].str.upper().str.contains(nome_subestacao.strip().upper(), na=False)
         
-        try:
-            # Tenta ler a camada de circuitos
-            gdf_ctmt = gpd.read_file(PATH_GDB, layer='CTMT', engine='pyogrio', columns=['COD_ID', 'SUB'])
+        if filtro.sum() == 0:
+            print(f"❌ Subestação '{nome_subestacao}' não encontrada no GDB.")
+            return gerar_fallback(nome_subestacao)
             
-            # Pega todos os circuitos que têm o ID da nossa Subestação
-            circuitos = gdf_ctmt[gdf_ctmt['SUB'] == id_sub]['COD_ID'].unique()
-            print(f"   🔗 Encontrados {len(circuitos)} alimentadores conectados.")
-        except Exception:
-            print("   ⚠️ Camada CTMT não encontrada ou erro de leitura. Tentando link direto...")
-            circuitos = []
+        dados_sub = gdf_sub[filtro].iloc[0]
+        id_sub = dados_sub[col_id_sub] # O código da subestação (ex: 15, ARU, etc)
+        nome_real = dados_sub[col_nome_sub]
+        
+        print(f"   📍 Alvo Identificado: {nome_real} (ID: {id_sub})")
 
-        # --- PASSO 3: Somar Consumo dos Clientes (UCBT) ---
-        print("   ⏳ Lendo tabela de consumidores (pode demorar)...")
+        # --- 2. BUSCA DE CONSUMIDORES (UCBT) ---
+        print(f"   🔍 Lendo base de consumidores (isso pode demorar um pouco)...")
         
-        # Lê a tabela sem geometria (muito mais rápido)
-        # Importante: Garantir que lemos as colunas de energia
-        df_uc = gpd.read_file(PATH_GDB, layer='UCBT_tab', engine='pyogrio', ignore_geometry=True)
+        # Tenta descobrir qual tabela existe (UCBT_tab ou UCBT)
+        layers = gpd.list_layers(PATH_GDB)['name'].tolist()
+        layer_consumidor = 'UCBT'
+        if 'UCBT_tab' in layers: layer_consumidor = 'UCBT_tab'
         
-        clientes = pd.DataFrame()
+        # Tenta ler colunas para achar a de Classe
+        # Não filtramos colunas no read_file para garantir que vamos pegar a certa, 
+        # mas usamos ignore_geometry para ser rápido.
+        df_uc = gpd.read_file(PATH_GDB, layer=layer_consumidor, engine='pyogrio', ignore_geometry=True)
+        
+        # Filtra apenas os clientes dessa subestação
+        # A coluna que liga UCBT à SUB geralmente é 'SUB' ou 'CTMT' (que liga ao trafo)
+        # Vamos assumir que existe uma coluna 'SUB' direta. Se não, precisaríamos cruzar com UNTR/CTMT (mais complexo).
+        if 'SUB' in df_uc.columns:
+            clientes = df_uc[df_uc['SUB'] == id_sub].copy()
+        else:
+            # Se não tiver coluna SUB direta na UCBT, retorna erro ou fallback
+            # (Implementação completa exigiria cruzar UCBT -> UNTR -> SSDMT -> SUB)
+            print("⚠️ Aviso: Tabela UCBT não tem coluna 'SUB' direta. Usando Fallback.")
+            return gerar_fallback(nome_real)
 
-        # TENTATIVA A: Via Circuitos (Mais correto)
-        if len(circuitos) > 0 and 'CTMT' in df_uc.columns:
-            clientes = df_uc[df_uc['CTMT'].isin(circuitos)]
-        
-        # TENTATIVA B: Link Direto (Caso raro, mas possível)
-        if clientes.empty and 'SUB' in df_uc.columns:
-            clientes = df_uc[df_uc['SUB'] == id_sub]
+        if clientes.empty:
+            print("⚠️ Aviso: Nenhum consumidor encontrado vinculado a este ID.")
+            return gerar_fallback(nome_real)
 
-        qtd_clientes = len(clientes)
+        # --- 3. CORREÇÃO DO ERRO 'CLA_CONS' ---
+        # Procura qual é a coluna de classe de consumo
+        possiveis_colunas_classe = ['CLA_CONS', 'TIP_CC', 'CLASSE', 'DESCR_CLASSE', 'COD_CLASS']
+        col_classe = next((c for c in clientes.columns if c in possiveis_colunas_classe), None)
         
-        # --- PASSO 4: Verificação e Fallback ---
-        if qtd_clientes == 0:
-            print(f"   ⚠️ Nenhum cliente encontrado via vínculo CTMT ou SUB.")
-            return gerar_estimativa_fallback(nome_real)
+        if not col_classe:
+            print(f"❌ Erro: Não encontrei coluna de classe (ex: CLA_CONS). Colunas disp: {list(clientes.columns[:10])}...")
+            return gerar_fallback(nome_real)
 
-        # --- PASSO 5: Extração Detalhada Mês a Mês (PARA A IA) ---
-        print("   📊 Calculando perfil sazonal mensal...")
+        print(f"   ✅ Coluna de Classe encontrada: {col_classe}")
+
+        # --- 4. CÁLCULO DO DNA (PERFIL) ---
+        cols_ene = [c for c in clientes.columns if c.startswith('ENE_')]
+        if not cols_ene:
+             print("❌ Erro: Colunas de energia ENE_01... não encontradas.")
+             return gerar_fallback(nome_real)
+
+        # Soma total anual por cliente
+        clientes['total_ano'] = clientes[cols_ene].sum(axis=1)
         
+        # Agrupa pela coluna de classe encontrada dinamicamente
+        mix = clientes.groupby(col_classe)['total_ano'].sum()
+        total_energia = mix.sum()
+        
+        perfil_mix = {"residencial": 0.0, "comercial": 0.0, "industrial": 0.0, "rural": 0.0}
+        
+        if total_energia > 0:
+            for classe_raw, valor in mix.items():
+                pct = valor / total_energia
+                # Normaliza para string para verificar
+                classe_str = str(classe_raw).upper()
+                
+                # Regras de mapeamento (Códigos comuns ANEEL)
+                # 1 = Residencial, 2 = Comercial, 3 = Industrial, 4 = Rural
+                # Ou strings: 'RE', 'CO', 'IN', 'RU'
+                if classe_str in ['1', 'RE', 'RESIDENCIAL']: 
+                    perfil_mix['residencial'] += pct
+                elif classe_str in ['2', 'CO', 'COMERCIAL', 'SERVICO_PUBLICO']: 
+                    perfil_mix['comercial'] += pct
+                elif classe_str in ['3', 'IN', 'INDUSTRIAL']: 
+                    perfil_mix['industrial'] += pct
+                elif classe_str in ['4', 'RU', 'RURAL']: 
+                    perfil_mix['rural'] += pct
+                else:
+                    # Distribui o resto (iluminação pública, poder público) no comercial
+                    perfil_mix['comercial'] += pct 
+
+        print(f"   🧬 DNA Calculado: Ind={perfil_mix['industrial']:.1%} | Res={perfil_mix['residencial']:.1%} | Com={perfil_mix['comercial']:.1%}")
+
+        # Consumo mensal médio da subestação (em MWh)
         perfil_mensal = {}
-        total_anual = 0.0
-        
-        # Itera de 01 a 12 para pegar cada coluna ENE_XX
         for i in range(1, 13):
-            mes_str = f"{i:02d}" # '01', '02', etc.
-            coluna_alvo = f"ENE_{mes_str}"
-            
-            # Procura a coluna no dataframe (ignorando case sensitive)
-            col_encontrada = next((c for c in df_uc.columns if c.upper() == coluna_alvo), None)
-            
-            if col_encontrada:
-                # Soma e converte de kWh para MWh
-                soma_mes_mwh = clientes[col_encontrada].sum() / 1000.0
-                perfil_mensal[i] = soma_mes_mwh
-                total_anual += soma_mes_mwh
-            else:
-                perfil_mensal[i] = 0.0
-
-        print(f"   ✅ Dados extraídos! Jan: {perfil_mensal[1]:.1f} MWh ... Dez: {perfil_mensal[12]:.1f} MWh")
+            col = f"ENE_{i:02d}"
+            # Soma de todos os clientes, divide por 1000 para virar MWh
+            val_mwh = clientes[col].sum() / 1000.0
+            perfil_mensal[i] = val_mwh
 
         return {
             "subestacao": nome_real,
-            "total_clientes": qtd_clientes,
-            "consumo_anual_mwh": float(total_anual),
-            "consumo_mensal": perfil_mensal, # <--- O DADO IMPORTANTE ESTÁ AQUI
-            "origem": "BDGD (Real)"
+            "id": id_sub,
+            "consumo_mensal": perfil_mensal,
+            "dna_perfil": perfil_mix,
+            "origem": "BDGD Real"
         }
 
     except Exception as e:
-        print(f"   ❌ Erro crítico no ETL: {e}")
-        return gerar_estimativa_fallback(nome_subestacao)
+        print(f"❌ Erro Crítico no ETL: {e}")
+        import traceback
+        traceback.print_exc() # Mostra onde foi o erro
+        return gerar_fallback(nome_subestacao)
 
-def gerar_estimativa_fallback(nome_sub):
-    """
-    Gera dados estatísticos plausíveis com sazonalidade simulada
-    para não travar a aplicação quando o BDGD falha.
-    """
-    print("   🔄 Ativando modo de ESTIMATIVA (Fallback)...")
-    
-    clientes_est = random.randint(2500, 8000)
-    base_kwh_cliente = 180.0 # Média residencial
-    
-    perfil_mensal = {}
-    total_anual = 0.0
-    
-    for i in range(1, 13):
-        # Cria uma curva de verão (Jan/Fev/Dez mais altos)
-        fator_sazonal = 1.0
-        if i in [12, 1, 2, 3]: fator_sazonal = 1.25
-        elif i in [6, 7]: fator_sazonal = 0.9
-        
-        consumo_mes = (clientes_est * base_kwh_cliente * fator_sazonal) / 1000.0 # MWh
-        perfil_mensal[i] = consumo_mes
-        total_anual += consumo_mes
-    
+def gerar_fallback(nome):
+    """Retorna um perfil padrão para não travar o gráfico"""
+    print(f"   ⚠️ Usando Perfil Genérico (Fallback) para {nome}")
     return {
-        "subestacao": nome_sub,
-        "total_clientes": clientes_est,
-        "consumo_anual_mwh": round(total_anual, 2),
-        "consumo_mensal": perfil_mensal,
-        "origem": "Estimado (Dados Indisponíveis)",
+        "subestacao": nome, 
+        "id": "FALLBACK",
+        "consumo_mensal": {i: 500 for i in range(1,13)}, # 500 MWh fixo
+        "dna_perfil": {"residencial": 0.6, "comercial": 0.3, "industrial": 0.1, "rural": 0.0},
         "alerta": True
     }

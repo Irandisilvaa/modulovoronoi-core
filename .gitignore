@@ -11,7 +11,7 @@ dados/
 *.shp
 *.shx
 *.dbf
-
+*.pkl
 # Ignorar arquivos do sistema operacional
 .DS_Store
 

@@ -4,19 +4,35 @@ import json
 import os
 import sys
 import requests
+import urllib.parse 
 from datetime import datetime, date
 from typing import Dict, Optional, List, Any
 from shapely.geometry import mapping
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config import PATH_GEOJSON
-from utils import carregar_dados_cache, fundir_dados_geo_mercado
+try:
+    from config import PATH_GEOJSON
+    from utils import carregar_dados_cache, fundir_dados_geo_mercado
+except ImportError:
+    pass
 
 app = FastAPI(
     title="GridScope API",
     description="API Avançada de Monitoramento de Rede",
-    version="4.2"
+    version="4.7" 
 )
+
+def limpar_float(valor):
+    """Converte strings BR (1.000,00) ou sujas para float Python (1000.00)"""
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    if isinstance(valor, str):
+        try:
+            limpo = valor.replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
+            return float(limpo)
+        except ValueError:
+            return 0.0
+    return 0.0
 
 class MetricasRede(BaseModel):
     total_clientes: int
@@ -26,6 +42,7 @@ class MetricasRede(BaseModel):
 class PerfilClasse(BaseModel):
     qtd_clientes: int
     pct: float
+    consumo_anual_mwh: Optional[float] = 0.0 
 
 class GeracaoDistribuida(BaseModel):
     total_unidades: int
@@ -50,6 +67,7 @@ class SimulacaoSolar(BaseModel):
     potencia_instalada_kw: float
     geracao_estimada_mwh: float
     impacto_na_rede: str
+
 
 def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
     hoje = date.today()
@@ -97,7 +115,7 @@ def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
 
 @app.get("/", tags=["Status"])
 def home():
-    return {"status": "online", "system": "GridScope Core 4.2"}
+    return {"status": "online", "system": "GridScope Core 4.7"}
 
 @app.get("/mercado/ranking", response_model=List[SubestacaoData], tags=["Core"])
 def obter_dados_completos():
@@ -108,9 +126,20 @@ def obter_dados_completos():
         for item in dados_fundidos:
             if item.get('geometry'):
                 item['geometry'] = mapping(item['geometry'])
-                
+            
+            if 'metricas_rede' in item:
+                m = item['metricas_rede']
+                if 'consumo_anual_mwh' in m:
+                    m['consumo_anual_mwh'] = limpar_float(m['consumo_anual_mwh'])
+
+            if 'perfil_consumo' in item:
+                for classe, valores in item['perfil_consumo'].items():
+                    raw_consumo = valores.get('consumo_anual_mwh', valores.get('consumo', 0))
+                    valores['consumo_anual_mwh'] = limpar_float(raw_consumo)
+
         return dados_fundidos
     except Exception as e:
+        print(f"Erro detalhado API: {e}") 
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 @app.get("/mercado/geojson", tags=["Core"])
@@ -124,6 +153,7 @@ def simular_geracao(
     nome_subestacao: str, 
     data: Optional[str] = Query(None, description="Data: DD-MM-AAAA ou DD/MM/AAAA")
 ):
+    # 1. TRATAMENTO DA DATA
     data_obj = date.today()
     if data:
         data_clean = data.replace("/", "-").replace(" ", "-")
@@ -140,25 +170,49 @@ def simular_geracao(
             raise HTTPException(status_code=400, detail="Formato invalido. Use DD-MM-AAAA")
 
     try:
+        # 2. CARREGAMENTO DOS DADOS
         gdf, dados_mercado = carregar_dados_cache()
         dados_fundidos = fundir_dados_geo_mercado(gdf, dados_mercado)
-        
-        alvo = next((x for x in dados_fundidos if x['subestacao'].upper() == nome_subestacao.upper()), None)
+    
+        # Decodifica URL e normaliza
+        nome_buscado = urllib.parse.unquote(nome_subestacao).strip().upper()
+        print(f"DEBUG: Buscando por '{nome_buscado}'...") # Log para ver no terminal
+
+        alvo = None
+        for x in dados_fundidos:
+            nome_banco = str(x['subestacao']).strip().upper()
+            
+            # Tenta 3 tipos de match para garantir
+            if nome_banco == nome_buscado: # Match Exato
+                alvo = x; break
+            if nome_buscado in nome_banco: # Busca Contida 
+                alvo = x; break
+            if nome_banco in nome_buscado: # Banco contido 
+                alvo = x; break
+
         if not alvo: 
-            raise HTTPException(status_code=404, detail="Subestacao nao encontrada")
+            print(f"ERRO: '{nome_buscado}' nao encontrado no cache.")
+            raise HTTPException(status_code=404, detail=f"Subestacao '{nome_buscado}' nao encontrada")
+
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro dados: {e}")
 
+    # 4. GEOMETRIA
     lat, lon = -10.9472, -37.0731 # Default Aracaju
     try:
         geom = alvo.get('geometry')
-        if geom:
-            centroide = geom.centroid
-            lon, lat = centroide.x, centroide.y
+        if isinstance(geom, dict) and 'coordinates' in geom:
+             coords = geom['coordinates']
+             if isinstance(coords[0], float): # Point
+                 lon, lat = coords[0], coords[1]
+             else: # Polygon
+                 lon, lat = coords[0][0][0], coords[0][0][1]
     except Exception as e:
         print(f"Aviso Geometria: {e}")
 
-    # 4. Simulação Solar
+    # 5. SIMULAÇÃO
     irradiacao, temp_max, desc_tempo, fonte = obter_clima_avancado(lat, lon, data_obj)
     
     perda_termica = 0.0
@@ -169,7 +223,7 @@ def simular_geracao(
     fator_performance_base = 0.75
     fator_performance_real = fator_performance_base * (1 - perda_termica)
     
-    potencia = alvo['geracao_distribuida']['potencia_total_kw']
+    potencia = limpar_float(alvo['geracao_distribuida']['potencia_total_kw'])
     
     geracao_kwh = potencia * irradiacao * fator_performance_real
     geracao_mwh = geracao_kwh / 1000
