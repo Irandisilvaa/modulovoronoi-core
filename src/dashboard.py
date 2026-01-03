@@ -12,8 +12,6 @@ import urllib.parse
 from datetime import date, timedelta
 import warnings
 
-API_URL = "http://localhost:8001/predict/duck-curve"
-
 # --- SUPRESSÃO DE AVISOS (CLEAN LOGS) ---
 # Ignora avisos de depreciação do Streamlit e alertas de geometria do GeoPandas que não afetam a lógica
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -140,34 +138,31 @@ def consultar_ia_predict(payload):
     except Exception as e:
         return None, str(e)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def obter_previsao_ia_cached(subestacao_nome, subestacao_id, data_str, consumo_mensal_mwh, potencia_gd_kw, lat, lon):
-    """
-    Chama a API de Inteligência Artificial para gerar a Duck Curve.
-    Agora envia o ID para carregar o modelo específico (DNA da Carga).
-    """
-    # Payload exato que a API (DuckCurveInput) espera
-    payload = {
-        "data_alvo": str(data_str),
-        "potencia_gd_kw": float(potencia_gd_kw),
-        "consumo_mes_alvo_mwh": float(consumo_mensal_mwh),
-        "lat": float(lat),
-        "lon": float(lon),
-        "subestacao_id": str(subestacao_id) # <--- O PULO DO GATO: Envia o ID para usar a IA treinada
-    }
+@st.cache_data(ttl=600, show_spinner=False)
+def obter_previsao_ia_cached(subestacao, data_str, potencia_gd, lat, lon):
+    """Realiza o ETL e a consulta à IA."""
+    dados_reais = buscar_dados_reais_para_ia(subestacao)
+    
+    consumo_anual = 0.0
+    if dados_reais and "erro" not in dados_reais:
+        consumo_anual = dados_reais.get('consumo_anual_mwh', 0)
+    else:
+        consumo_anual = 6000.0 
+    
+    consumo_mes_estimado = consumo_anual / 12
 
     try:
-        response = requests.post(API_URL, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            return response.json(), None
-        else:
-            return None, f"Erro API: {response.status_code} - {response.text}"
-            
-    except requests.exceptions.ConnectionError:
-        return None, "API Offline. Verifique se o 'server.py' está rodando."
-    except Exception as e:
-        return None, f"Erro de conexão: {e}"
+        payload = {
+            "data_alvo": str(data_str),
+            "potencia_gd_kw": float(potencia_gd) if potencia_gd else 0.0,
+            "consumo_mes_alvo_mwh": float(consumo_mes_estimado),
+            "lat": float(lat),
+            "lon": float(lon)
+        }
+    except ValueError:
+        return None, "Erro na conversão de dados numéricos para IA."
+
+    return consultar_ia_predict(payload)
 
 # --- CARREGAMENTO INICIAL ---
 gdf, df_mercado = obter_dados_dashboard()
@@ -454,66 +449,47 @@ with tab_ia:
     st.divider()
 
     st.header("🧠 Análise Preditiva (AI Duck Curve)")
-
-# --- PREPARAÇÃO DOS DADOS ---
-# Tenta pegar o ID. Se não tiver, usa o nome como fallback (mas o ideal é ter o ID numérico/código)
-id_para_ia = dados_gd.get('id', nome_limpo_escolha) 
-
-# Define um consumo padrão caso o usuário não tenha inputado (ex: média do ano)
-consumo_para_ia = consumo_mes_estimado if 'consumo_mes_estimado' in locals() else 500.0
-
-with st.spinner(f"IA: Simulando perfil de carga para {nome_limpo_escolha}..."):
     
-    # --- CHAMADA ATUALIZADA ---
-    res_ia, erro_ia = obter_previsao_ia_cached(
-        subestacao_nome=nome_limpo_escolha,
-        subestacao_id=id_para_ia,          # <--- NOVO: Passando o ID
-        data_str=str(data_analise),
-        consumo_mensal_mwh=consumo_para_ia, # <--- NOVO: Passando o volume mensal
-        potencia_gd_kw=dados_gd.get('potencia_total_kw', 0),
-        lat=lat_c,
-        lon=lon_c
-    )
+    with st.spinner(f"IA: Calculando fluxo energético para {data_analise.strftime('%d/%m')}..."):
+        res_ia, erro_ia = obter_previsao_ia_cached(
+            subestacao=nome_limpo_escolha,
+            data_str=str(data_analise),
+            potencia_gd=dados_gd.get('potencia_total_kw', 0),
+            lat=lat_c,
+            lon=lon_c
+        )
 
-    if res_ia:
-        # ... (O resto do seu código de plotagem continua IGUAL) ...
-        if 'timeline' in res_ia and 'consumo_mwh' in res_ia and len(res_ia['timeline']) > 0:
-            analise_texto = res_ia.get('analise', 'Análise processada')
-            is_alerta = res_ia.get('alerta', False)
-            
-            # Exibe metadados para você confirmar que funcionou
-            meta = res_ia.get('metadados', {})
-            origem_perfil = meta.get('origem_perfil', 'Desconhecida')
-            
-            if is_alerta:
-                st.error(f"**ALERTA:** {analise_texto} (Fonte: {origem_perfil})", icon="⚠️")
+        if res_ia:
+            if 'timeline' in res_ia and 'consumo_mwh' in res_ia and len(res_ia['timeline']) > 0:
+                analise_texto = res_ia.get('analise', 'Análise processada')
+                is_alerta = res_ia.get('alerta', False)
+                
+                if is_alerta:
+                    st.error(f"**ALERTA DETECTADO:** {analise_texto}", icon="⚠️")
+                else:
+                    st.success(f"**OPERAÇÃO NORMAL:** {analise_texto}", icon="✅")
+
+                fig_duck = go.Figure()
+                fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['consumo_mwh'], name="Carga (Consumo)", fill='tozeroy', line=dict(color='#007bff', width=2), fillcolor='rgba(0, 123, 255, 0.1)'))
+                fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['geracao_mwh'], name="Geração Solar", line=dict(color='#ffc107', width=3)))
+                fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['carga_liquida_mwh'], name="Carga Líquida (Saldo)", line=dict(color='white', dash='dot', width=2)))
+                fig_duck.add_hline(y=0, line_dash="solid", line_color="#dc3545", annotation_text="Limite Reverso")
+                fig_duck.update_layout(height=500, title="Projeção Energética (24h)", hovermode="x unified", legend=dict(orientation="h", y=1.1))
+                st.plotly_chart(fig_duck, use_container_width=True)
+
+                kp1, kp2, kp3 = st.columns(3)
+                pico_solar = max(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
+                min_liquida = min(res_ia['carga_liquida_mwh']) if res_ia['carga_liquida_mwh'] else 0
+                cons_tot = sum(res_ia['consumo_mwh']) if res_ia['consumo_mwh'] else 0
+                ger_tot = sum(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
+                cobertura = (ger_tot / cons_tot * 100) if cons_tot > 0 else 0
+
+                kp1.metric("Pico de Geração Solar", f"{pico_solar:.2f} MW")
+                kp2.metric("Menor Carga Líquida", f"{min_liquida:.2f} MW", delta="Crítico" if min_liquida < 0 else "Estável", delta_color="inverse")
+                kp3.metric("Cobertura Solar Diária", f"{cobertura:.1f}%")
             else:
-                st.success(f"**NORMAL:** {analise_texto} (Fonte: {origem_perfil})", icon="✅")
-
-            fig_duck = go.Figure()
-            # ... (Seu código de gráfico existente) ...
-            fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['consumo_mwh'], name="Carga (Consumo)", fill='tozeroy', line=dict(color='#007bff', width=2), fillcolor='rgba(0, 123, 255, 0.1)'))
-            fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['geracao_mwh'], name="Geração Solar", line=dict(color='#ffc107', width=3)))
-            fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['carga_liquida_mwh'], name="Carga Líquida (Saldo)", line=dict(color='white', dash='dot', width=2)))
-            fig_duck.add_hline(y=0, line_dash="solid", line_color="#dc3545", annotation_text="Limite Reverso")
-            fig_duck.update_layout(height=500, title="Projeção Energética (24h)", hovermode="x unified", legend=dict(orientation="h", y=1.1))
-            st.plotly_chart(fig_duck, use_container_width=True)
-
-            # KPIs
-            kp1, kp2, kp3 = st.columns(3)
-            pico_solar = max(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
-            min_liquida = min(res_ia['carga_liquida_mwh']) if res_ia['carga_liquida_mwh'] else 0
-            cons_tot = sum(res_ia['consumo_mwh']) if res_ia['consumo_mwh'] else 0
-            ger_tot = sum(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
-            cobertura = (ger_tot / cons_tot * 100) if cons_tot > 0 else 0
-
-            kp1.metric("Pico Solar", f"{pico_solar:.2f} MW")
-            kp2.metric("Mínima Líquida", f"{min_liquida:.2f} MW", delta="Crítico" if min_liquida < 0 else "Estável", delta_color="inverse")
-            kp3.metric("Cobertura Solar", f"{cobertura:.1f}%")
-
+                st.error("Dados incompletos retornados pela IA.")
         else:
-            st.error("Dados incompletos retornados pela IA.")
-    else:
-        st.warning(f"⚠️ IA Indisponível: {erro_ia}")
+            st.warning(f"Não foi possível calcular a curva. Detalhe: {erro_ia}")
 
 st.caption(f"GridScope v4.9 Enterprise | Dados atualizados em: {date.today().strftime('%d/%m/%Y')}")
