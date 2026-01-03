@@ -6,7 +6,6 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# --- CONFIGURAÇÕES ---
 NOME_PASTA_GDB = "Energisa_SE_6587_2023-12-31_V11_20250701-0833.gdb"
 NOME_ARQUIVO_VORONOI = "subestacoes_logicas_aracaju.geojson"
 NOME_ARQUIVO_SAIDA = "perfil_mercado_aracaju.json"
@@ -21,7 +20,6 @@ MAPA_CLASSES = {
     'PO': 'Poder Público'
 }
 
-# --- FUNÇÃO SEGURA DE SOMA (EVITA ERRO NA HORA DE SALVAR) ---
 def calcular_consumo_real(df):
     """Soma ENE_01 a ENE_12 convertendo erros para 0."""
     cols_energia = [f'ENE_{i:02d}' for i in range(1, 13)]
@@ -66,7 +64,7 @@ def analisar_mercado():
         print(f"Erro Voronoi: {e}")
         return
 
-    # 2. MAPEANDO TRAFOS (AQUI ESTAVA O ERRO)
+    # 2. MAPEANDO TRAFOS 
     print("2. Mapeando Transformadores...")
     try:
         gdf_trafos = gpd.read_file(path_gdb, layer='UNTRMT', engine='pyogrio').to_crs(epsg=31984)
@@ -76,14 +74,11 @@ def analisar_mercado():
         
         # Tratamento do conflito de nomes
         if 'COD_ID_right' in trafos_join.columns:
-            # Esse é o ID da Subestação (veio do Voronoi)
             trafos_join = trafos_join.rename(columns={'COD_ID_right': 'ID_SUBESTACAO'})
         
         if 'COD_ID_left' in trafos_join.columns:
-            # Esse é o ID do Trafo (veio do GDB) - Renomeamos de volta para COD_ID
             trafos_join = trafos_join.rename(columns={'COD_ID_left': 'COD_ID'})
         
-        # Fallback: Se não teve conflito, mas o nome da subestação colidiu
         if 'NOM' in trafos_join.columns:
             trafos_join = trafos_join.rename(columns={'NOM': 'NOME_SUBESTACAO'})
         elif 'NOM_right' in trafos_join.columns:

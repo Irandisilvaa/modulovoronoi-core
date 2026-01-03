@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import requests
-import urllib.parse # <--- IMPORTANTE: Adicionado para corrigir URL
+import urllib.parse 
 from datetime import datetime, date
 from typing import Dict, Optional, List, Any
 from shapely.geometry import mapping
@@ -19,10 +19,9 @@ except ImportError:
 app = FastAPI(
     title="GridScope API",
     description="API Avançada de Monitoramento de Rede",
-    version="4.7" # Versão com correção de String Matching
+    version="4.7" 
 )
 
-# --- FUNÇÃO DE LIMPEZA ROBUSTA ---
 def limpar_float(valor):
     """Converte strings BR (1.000,00) ou sujas para float Python (1000.00)"""
     if isinstance(valor, (int, float)):
@@ -34,8 +33,6 @@ def limpar_float(valor):
         except ValueError:
             return 0.0
     return 0.0
-
-# --- MODELOS DE DADOS ---
 
 class MetricasRede(BaseModel):
     total_clientes: int
@@ -71,7 +68,6 @@ class SimulacaoSolar(BaseModel):
     geracao_estimada_mwh: float
     impacto_na_rede: str
 
-# --- FUNÇÕES AUXILIARES DE CLIMA ---
 
 def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
     hoje = date.today()
@@ -116,8 +112,6 @@ def obter_clima_avancado(lat: float, lon: float, data_alvo: date):
     except Exception as e:
         print(f"Erro Clima: {e}")
         return 5.0, 30.0, "Dados Offline", "Estimativa Padrao"
-
-# --- ENDPOINTS ---
 
 @app.get("/", tags=["Status"])
 def home():
@@ -179,8 +173,7 @@ def simular_geracao(
         # 2. CARREGAMENTO DOS DADOS
         gdf, dados_mercado = carregar_dados_cache()
         dados_fundidos = fundir_dados_geo_mercado(gdf, dados_mercado)
-        
-        # 3. CORREÇÃO DA BUSCA (AQUI ESTAVA O ERRO)
+    
         # Decodifica URL e normaliza
         nome_buscado = urllib.parse.unquote(nome_subestacao).strip().upper()
         print(f"DEBUG: Buscando por '{nome_buscado}'...") # Log para ver no terminal
@@ -192,9 +185,9 @@ def simular_geracao(
             # Tenta 3 tipos de match para garantir
             if nome_banco == nome_buscado: # Match Exato
                 alvo = x; break
-            if nome_buscado in nome_banco: # Busca Contida (ex: 'ATALAIA' em 'ATALAIA (ID: 15)')
+            if nome_buscado in nome_banco: # Busca Contida 
                 alvo = x; break
-            if nome_banco in nome_buscado: # Banco contido (inverso)
+            if nome_banco in nome_buscado: # Banco contido 
                 alvo = x; break
 
         if not alvo: 

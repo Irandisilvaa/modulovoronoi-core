@@ -2,174 +2,152 @@ import pandas as pd
 import geopandas as gpd
 import os
 import sys
-import random
 
-# --- CONFIGURAÇÃO DE CAMINHOS ---
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Tenta pegar o caminho do config, senão define manual
+# Tenta importar caminho do config, senão usa padrão
 try:
     from config import PATH_GDB
 except ImportError:
-    # Ajuste aqui se necessário
+    # Ajuste este caminho se necessário
     PATH_GDB = r"C:\Users\irand\Documents\gridscope-core\data\raw\SE_2023.gdb"
 
-# --- SINÔNIMOS DE COLUNAS ---
-COLUNAS_POSSIVEIS = {
-    "NOME_SUB": ["NOM", "NOME", "DS_SUB", "NO_SUB", "NOME_SUBESTACAO", "DS_NOME"],
-    "ID_SUB": ["COD_ID", "ID", "PAC", "CD_SUB", "SUB_ID", "CODIGO", "UNI_TR_S"],
-    "TABELA_SUB": ["SUB", "SSD", "SUBESTACAO", "LOC_SUB"], 
-    "TABELA_CONSUMIDOR": ["UCBT_tab", "UCBT", "CONSUMIDOR", "CLIENTE"] 
-}
-
-def encontrar_coluna(df, lista_candidatas):
-    """ Retorna o nome real da coluna no DF se bater com a lista. """
-    cols_existentes = [c.upper() for c in df.columns]
-    for tentativa in lista_candidatas:
-        if tentativa in cols_existentes:
-            return df.columns[cols_existentes.index(tentativa)]
-    return None
-
 def buscar_dados_reais_para_ia(nome_subestacao):
-    print(f"\n🤖 IA (ETL V3 - Sherlock): Buscando '{nome_subestacao}'...")
+    print(f"\n🤖 IA: Analisando DNA da subestação '{nome_subestacao}'...")
     
     if not os.path.exists(PATH_GDB):
-        print(f"❌ GDB não encontrado: {PATH_GDB}")
-        return {"erro": "GDB 404"}
+        return {"erro": "GDB não encontrado"}
 
     try:
-        # --- 1. LOCALIZAR SUBESTAÇÃO ---
-        layer_sub = None
-        for layer in COLUNAS_POSSIVEIS["TABELA_SUB"]:
-            try:
-                gpd.read_file(PATH_GDB, layer=layer, rows=1)
-                layer_sub = layer
-                break
-            except: continue
+        # --- 1. IDENTIFICAÇÃO DA SUBESTAÇÃO ---
+        # Lê apenas 1 linha para pegar nomes das colunas da camada SUB
+        sample_sub = gpd.read_file(PATH_GDB, layer='SUB', engine='pyogrio', rows=1)
+        cols_sub = sample_sub.columns
         
-        if not layer_sub:
-            print("❌ Camada de Subestação não encontrada.")
-            return gerar_estimativa_fallback(nome_subestacao)
+        # Acha dinamicamente a coluna de NOME e ID
+        col_nome_sub = next((c for c in cols_sub if c.upper() in ['NOM', 'NOME', 'NAME', 'PAC_1']), None)
+        col_id_sub = next((c for c in cols_sub if c.upper() in ['COD_ID', 'ID', 'CODIGO', 'SUB']), None)
+        
+        if not col_nome_sub: return {"erro": "Coluna de nome da SUB não encontrada"}
 
-        gdf_sub = gpd.read_file(PATH_GDB, layer=layer_sub, engine='pyogrio')
+        # Busca a subestação específica
+        gdf_sub = gpd.read_file(PATH_GDB, layer='SUB', engine='pyogrio', columns=[col_nome_sub, col_id_sub])
+        filtro = gdf_sub[col_nome_sub].str.upper().str.contains(nome_subestacao.strip().upper(), na=False)
         
-        col_nome = encontrar_coluna(gdf_sub, COLUNAS_POSSIVEIS["NOME_SUB"])
-        col_id = encontrar_coluna(gdf_sub, COLUNAS_POSSIVEIS["ID_SUB"])
-        
-        if not col_nome or not col_id:
-            print(f"❌ Colunas de Nome/ID não identificadas em {layer_sub}.")
-            return gerar_estimativa_fallback(nome_subestacao)
-
-        # Filtra pelo nome
-        filtro = gdf_sub[col_nome].astype(str).str.upper().str.contains(nome_subestacao.upper(), na=False)
-        sub_encontrada = gdf_sub[filtro]
-        
-        if sub_encontrada.empty:
-            print(f"⚠️ Subestação '{nome_subestacao}' não encontrada.")
-            return gerar_estimativa_fallback(nome_subestacao)
+        if filtro.sum() == 0:
+            print(f"❌ Subestação '{nome_subestacao}' não encontrada no GDB.")
+            return gerar_fallback(nome_subestacao)
             
-        id_sub_alvo = sub_encontrada.iloc[0][col_id]
-        nome_real = sub_encontrada.iloc[0][col_nome]
-        print(f"✅ Subestação: {nome_real} | ID Alvo: {id_sub_alvo}")
-
-        # --- 2. LOCALIZAR CONSUMIDORES (MODO SHERLOCK) ---
-        layer_uc = "UCBT_tab" # Tenta o padrão primeiro
-        try:
-            gpd.read_file(PATH_GDB, layer=layer_uc, rows=1, ignore_geometry=True)
-        except:
-            # Tenta variações se falhar
-            for l in COLUNAS_POSSIVEIS["TABELA_CONSUMIDOR"]:
-                try: 
-                    gpd.read_file(PATH_GDB, layer=l, rows=1, ignore_geometry=True)
-                    layer_uc = l
-                    break
-                except: continue
-
-        print(f"⏳ Varrendo tabela '{layer_uc}' em busca do ID {id_sub_alvo}...")
-        df_uc = gpd.read_file(PATH_GDB, layer=layer_uc, engine='pyogrio', ignore_geometry=True)
+        dados_sub = gdf_sub[filtro].iloc[0]
+        id_sub = dados_sub[col_id_sub] # O código da subestação (ex: 15, ARU, etc)
+        nome_real = dados_sub[col_nome_sub]
         
-        # --- A MÁGICA: Busca em TODAS as colunas ---
-        clientes = pd.DataFrame()
-        coluna_de_ligacao_encontrada = None
+        print(f"   📍 Alvo Identificado: {nome_real} (ID: {id_sub})")
 
-        # Converte ID alvo para string para garantir comparação
-        id_str = str(id_sub_alvo).strip()
-        id_num = id_sub_alvo if isinstance(id_sub_alvo, (int, float)) else None
-
-        # Prioriza colunas óbvias para ganhar tempo
-        cols_prioridade = ["SUB", "CTMT", "UNI_TR_S", "CONJUNTO", "PAC"]
-        cols_teste = [c for c in df_uc.columns if c in cols_prioridade] + [c for c in df_uc.columns if c not in cols_prioridade]
-
-        for col in cols_teste:
-            # Pega uma amostra para ver se tem chance de ser essa coluna
-            # Se a coluna só tem texto "A, B, C", não adianta comparar com ID numérico
-            if df_uc[col].dtype == 'object':
-                match = df_uc[df_uc[col].astype(str).str.strip() == id_str]
-            else:
-                if id_num is not None:
-                    match = df_uc[df_uc[col] == id_num]
-                else:
-                    continue # Coluna numérica vs ID string -> pula
-
-            if not match.empty:
-                print(f"🎉 ENCONTRADO! A coluna de ligação é: '{col}'")
-                clientes = match
-                coluna_de_ligacao_encontrada = col
-                break
+        # --- 2. BUSCA DE CONSUMIDORES (UCBT) ---
+        print(f"   🔍 Lendo base de consumidores (isso pode demorar um pouco)...")
         
+        # Tenta descobrir qual tabela existe (UCBT_tab ou UCBT)
+        layers = gpd.list_layers(PATH_GDB)['name'].tolist()
+        layer_consumidor = 'UCBT'
+        if 'UCBT_tab' in layers: layer_consumidor = 'UCBT_tab'
+        
+        # Tenta ler colunas para achar a de Classe
+        # Não filtramos colunas no read_file para garantir que vamos pegar a certa, 
+        # mas usamos ignore_geometry para ser rápido.
+        df_uc = gpd.read_file(PATH_GDB, layer=layer_consumidor, engine='pyogrio', ignore_geometry=True)
+        
+        # Filtra apenas os clientes dessa subestação
+        # A coluna que liga UCBT à SUB geralmente é 'SUB' ou 'CTMT' (que liga ao trafo)
+        # Vamos assumir que existe uma coluna 'SUB' direta. Se não, precisaríamos cruzar com UNTR/CTMT (mais complexo).
+        if 'SUB' in df_uc.columns:
+            clientes = df_uc[df_uc['SUB'] == id_sub].copy()
+        else:
+            # Se não tiver coluna SUB direta na UCBT, retorna erro ou fallback
+            # (Implementação completa exigiria cruzar UCBT -> UNTR -> SSDMT -> SUB)
+            print("⚠️ Aviso: Tabela UCBT não tem coluna 'SUB' direta. Usando Fallback.")
+            return gerar_fallback(nome_real)
+
         if clientes.empty:
-            print(f"⚠️ Varri todas as {len(df_uc.columns)} colunas e nenhuma possui o ID {id_sub_alvo}.")
-            print("   -> Tente verificar se o ID na tabela SUB é o mesmo usado na UCBT.")
-            return gerar_estimativa_fallback(nome_real)
+            print("⚠️ Aviso: Nenhum consumidor encontrado vinculado a este ID.")
+            return gerar_fallback(nome_real)
 
-        print(f"✅ Sucesso: {len(clientes)} clientes vinculados encontrados.")
-
-        # --- 3. SOMAR ENERGIA ---
-        perfil_mensal = {}
-        total_anual = 0.0
+        # --- 3. CORREÇÃO DO ERRO 'CLA_CONS' ---
+        # Procura qual é a coluna de classe de consumo
+        possiveis_colunas_classe = ['CLA_CONS', 'TIP_CC', 'CLASSE', 'DESCR_CLASSE', 'COD_CLASS']
+        col_classe = next((c for c in clientes.columns if c in possiveis_colunas_classe), None)
         
-        for i in range(1, 13):
-            mes_str = f"{i:02d}"
-            possiveis_cols = [f"ENE_{mes_str}", f"ENE{mes_str}", f"CONS_{mes_str}"]
-            
-            col_energia = encontrar_coluna(clientes, possiveis_cols)
-            
-            if col_energia:
-                soma = clientes[col_energia].fillna(0).sum() / 1000.0 # MWh
-                perfil_mensal[i] = soma
-                total_anual += soma
-            else:
-                perfil_mensal[i] = 0.0
+        if not col_classe:
+            print(f"❌ Erro: Não encontrei coluna de classe (ex: CLA_CONS). Colunas disp: {list(clientes.columns[:10])}...")
+            return gerar_fallback(nome_real)
 
-        print(f"📊 Volume Total Extraído: {total_anual:.2f} MWh")
+        print(f"   ✅ Coluna de Classe encontrada: {col_classe}")
+
+        # --- 4. CÁLCULO DO DNA (PERFIL) ---
+        cols_ene = [c for c in clientes.columns if c.startswith('ENE_')]
+        if not cols_ene:
+             print("❌ Erro: Colunas de energia ENE_01... não encontradas.")
+             return gerar_fallback(nome_real)
+
+        # Soma total anual por cliente
+        clientes['total_ano'] = clientes[cols_ene].sum(axis=1)
+        
+        # Agrupa pela coluna de classe encontrada dinamicamente
+        mix = clientes.groupby(col_classe)['total_ano'].sum()
+        total_energia = mix.sum()
+        
+        perfil_mix = {"residencial": 0.0, "comercial": 0.0, "industrial": 0.0, "rural": 0.0}
+        
+        if total_energia > 0:
+            for classe_raw, valor in mix.items():
+                pct = valor / total_energia
+                # Normaliza para string para verificar
+                classe_str = str(classe_raw).upper()
+                
+                # Regras de mapeamento (Códigos comuns ANEEL)
+                # 1 = Residencial, 2 = Comercial, 3 = Industrial, 4 = Rural
+                # Ou strings: 'RE', 'CO', 'IN', 'RU'
+                if classe_str in ['1', 'RE', 'RESIDENCIAL']: 
+                    perfil_mix['residencial'] += pct
+                elif classe_str in ['2', 'CO', 'COMERCIAL', 'SERVICO_PUBLICO']: 
+                    perfil_mix['comercial'] += pct
+                elif classe_str in ['3', 'IN', 'INDUSTRIAL']: 
+                    perfil_mix['industrial'] += pct
+                elif classe_str in ['4', 'RU', 'RURAL']: 
+                    perfil_mix['rural'] += pct
+                else:
+                    # Distribui o resto (iluminação pública, poder público) no comercial
+                    perfil_mix['comercial'] += pct 
+
+        print(f"   🧬 DNA Calculado: Ind={perfil_mix['industrial']:.1%} | Res={perfil_mix['residencial']:.1%} | Com={perfil_mix['comercial']:.1%}")
+
+        # Consumo mensal médio da subestação (em MWh)
+        perfil_mensal = {}
+        for i in range(1, 13):
+            col = f"ENE_{i:02d}"
+            # Soma de todos os clientes, divide por 1000 para virar MWh
+            val_mwh = clientes[col].sum() / 1000.0
+            perfil_mensal[i] = val_mwh
 
         return {
             "subestacao": nome_real,
-            "total_clientes": len(clientes),
-            "consumo_anual_mwh": float(total_anual),
+            "id": id_sub,
             "consumo_mensal": perfil_mensal,
-            "origem": "BDGD (Real)"
+            "dna_perfil": perfil_mix,
+            "origem": "BDGD Real"
         }
 
     except Exception as e:
-        print(f"❌ Erro ETL: {e}")
-        return gerar_estimativa_fallback(nome_subestacao)
+        print(f"❌ Erro Crítico no ETL: {e}")
+        import traceback
+        traceback.print_exc() # Mostra onde foi o erro
+        return gerar_fallback(nome_subestacao)
 
-def gerar_estimativa_fallback(nome_sub):
-    print("🔄 [FALLBACK] Usando dados estatísticos...")
-    clientes_est = 5000
-    base_kwh = 180.0
-    perfil = {}
-    total = 0.0
-    for i in range(1, 13):
-        val = (clientes_est * base_kwh) / 1000.0
-        perfil[i] = val
-        total += val
-        
+def gerar_fallback(nome):
+    """Retorna um perfil padrão para não travar o gráfico"""
+    print(f"   ⚠️ Usando Perfil Genérico (Fallback) para {nome}")
     return {
-        "subestacao": nome_sub,
-        "consumo_anual_mwh": total,
-        "consumo_mensal": perfil,
-        "origem": "Estimado",
+        "subestacao": nome, 
+        "id": "FALLBACK",
+        "consumo_mensal": {i: 500 for i in range(1,13)}, # 500 MWh fixo
+        "dna_perfil": {"residencial": 0.6, "comercial": 0.3, "industrial": 0.1, "rural": 0.0},
         "alerta": True
     }
