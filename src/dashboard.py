@@ -45,7 +45,7 @@ def formatar_br(valor):
     if isinstance(valor, str): return valor
     try:
         return f"{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except (ValueError, TypeError):
         return str(valor)
 
 def converter_para_dict(dado):
