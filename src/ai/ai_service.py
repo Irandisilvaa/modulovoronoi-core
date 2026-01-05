@@ -12,7 +12,6 @@ try:
 except Exception:
     br_holidays = set()
 
-# --- CONFIG ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(current_dir, "modelos")
 
@@ -46,7 +45,6 @@ class ModelCache:
 
 
 _cache = ModelCache()
-
 app = FastAPI(title="GridScope AI", version="9.0")
 
 
@@ -122,7 +120,6 @@ def predict(entrada: DuckCurveInput):
         consumo = [1.2] * 24
         fonte = "Fallback (sem modelo)"
 
-    # Curva solar
     try:
         horas = np.arange(24)
         solar = np.exp(-((horas - 12) ** 2) / (2 * 3.2 ** 2))

@@ -6,7 +6,6 @@ from sklearn.ensemble import RandomForestRegressor
 from datetime import datetime
 import holidays
 
-# --- CONFIGURAÇÃO ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(current_dir, "modelos")
 os.makedirs(MODELS_DIR, exist_ok=True)
@@ -16,7 +15,6 @@ def gerar_fator_subestacao(identificador: str) -> int:
 
 
 def treinar_modelo_simulado(identificador):
-    # Garante que o ID seja tratado como string limpa
     identificador_str = str(identificador).strip()
     nome_arquivo = identificador_str.replace(" ", "_")
 
@@ -40,10 +38,10 @@ def treinar_modelo_simulado(identificador):
     for data in datas:
         h = data.hour
 
-        if "30290967" in identificador_str:  # SUBESTA7 (A)
-            consumo_base = 25 + 8 * np.sin((h - 8) * np.pi / 12)  # Pico dia
+        if "30290967" in identificador_str:
+            consumo_base = 25 + 8 * np.sin((h - 8) * np.pi / 12)
         elif "30290937" in identificador_str:  # SUBESTA7 (B)
-            consumo_base = 20 + 12 * np.sin((h - 18) * np.pi / 12)  # Pico noite
+            consumo_base = 20 + 12 * np.sin((h - 18) * np.pi / 12)
         elif "CONTORNO" in nome_upper or "SUBESTA6" in nome_upper:
             consumo_base = 35 + 10 * np.sin((h - 10) * np.pi / 10)
         elif "INDUSTRIAL" in nome_upper:
@@ -95,15 +93,14 @@ def treinar_modelo_simulado(identificador):
 
 if __name__ == "__main__":
     lista_treino = [
-        "30290967",  # SUBESTA7 (Versão 1)
-        "30290937",  # SUBESTA7 (Versão 2)
-        "30290936",  # SUBESTA6
-        "30290965",  # SE CONTORNO
-        "30290955",  # SUBESTA5
-        "30290938",  # SUBESTA8
-        "30290969",  # SUBESTA9
+        "30290967",
+        "30290937",
+        "30290936",
+        "30290965",
+        "30290955",
+        "30290938",
+        "30290969",
 
-        # Nomes Genéricos (Fallback)
         "SUBESTA5",
         "SUBESTA6",
         "SUBESTA7",

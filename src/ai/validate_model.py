@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_absolute_error
 
-# ================= CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "modelos")
 OUT_DIR = os.path.join(BASE_DIR, "validacao")
@@ -16,8 +15,6 @@ try:
     br_holidays = Brazil()
 except Exception:
     br_holidays = set()
-
-# ============== FUNÇÕES AUX ==============
 
 def gerar_fator_subestacao(identificador: str) -> int:
     return abs(hash(identificador)) % 10
@@ -32,11 +29,9 @@ def gerar_gabarito(nome, horas, eh_fds):
     valores = []
     for h, fds in zip(horas, eh_fds):
 
-        # PERFIL INDUSTRIAL (quase plano)
         if "INDUSTRIAL" in nome:
             val = 1.0 + np.random.normal(0, 0.05)
 
-        # PERFIL ALTA CARGA
         elif "CONTORNO" in nome or "SUBESTA6" in nome:
             val = 1.8 + 0.9 * np.sin((h - 11) * np.pi / 10)
 
@@ -54,9 +49,6 @@ def gerar_gabarito(nome, horas, eh_fds):
         valores.append(max(0.1, val))
 
     return np.array(valores)
-
-
-# ============== VALIDAÇÃO ==============
 
 def validar_modelo(model_path):
     nome = os.path.basename(model_path).replace("modelo_", "").replace(".pkl", "")
@@ -105,7 +97,6 @@ def validar_modelo(model_path):
     r2 = r2_score(y_ref, y_pred)
     mae = mean_absolute_error(y_ref, y_pred)
 
-    # ===== GRÁFICO =====
     ini = 24 * 7 * 8
     fim = ini + 24 * 7
 
@@ -125,9 +116,6 @@ def validar_modelo(model_path):
     plt.close()
 
     return nome, round(r2, 4), round(mae, 2), img_path
-
-
-# ============== EXECUÇÃO EM LOTE ==============
 
 if __name__ == "__main__":
 

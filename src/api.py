@@ -170,24 +170,21 @@ def simular_geracao(
             raise HTTPException(status_code=400, detail="Formato invalido. Use DD-MM-AAAA")
 
     try:
-        # 2. CARREGAMENTO DOS DADOS
         gdf, dados_mercado = carregar_dados_cache()
         dados_fundidos = fundir_dados_geo_mercado(gdf, dados_mercado)
     
-        # Decodifica URL e normaliza
         nome_buscado = urllib.parse.unquote(nome_subestacao).strip().upper()
-        print(f"DEBUG: Buscando por '{nome_buscado}'...") # Log para ver no terminal
+        print(f"DEBUG: Buscando por '{nome_buscado}'...")
 
         alvo = None
         for x in dados_fundidos:
             nome_banco = str(x['subestacao']).strip().upper()
             
-            # Tenta 3 tipos de match para garantir
-            if nome_banco == nome_buscado: # Match Exato
+            if nome_banco == nome_buscado:
                 alvo = x; break
-            if nome_buscado in nome_banco: # Busca Contida 
+            if nome_buscado in nome_banco:
                 alvo = x; break
-            if nome_banco in nome_buscado: # Banco contido 
+            if nome_banco in nome_buscado:
                 alvo = x; break
 
         if not alvo: 
@@ -199,8 +196,7 @@ def simular_geracao(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro dados: {e}")
 
-    # 4. GEOMETRIA
-    lat, lon = -10.9472, -37.0731 # Default Aracaju
+    lat, lon = -10.9472, -37.0731
     try:
         geom = alvo.get('geometry')
         if isinstance(geom, dict) and 'coordinates' in geom:
@@ -212,7 +208,6 @@ def simular_geracao(
     except Exception as e:
         print(f"Aviso Geometria: {e}")
 
-    # 5. SIMULAÇÃO
     irradiacao, temp_max, desc_tempo, fonte = obter_clima_avancado(lat, lon, data_obj)
     
     perda_termica = 0.0

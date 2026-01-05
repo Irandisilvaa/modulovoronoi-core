@@ -5,7 +5,6 @@ import os
 import logging
 from datetime import datetime
 
-# --- CONFIGURAÇÕES DE DIRETÓRIO ---
 DIR_RAIZ = os.path.dirname(os.path.abspath(__file__))
 DIR_SRC = os.path.join(DIR_RAIZ, "src")
 DIR_LOGS = os.path.join(DIR_RAIZ, "logs")
@@ -15,7 +14,6 @@ PYTHON_EXEC = sys.executable
 
 os.makedirs(DIR_LOGS, exist_ok=True)
 
-# --- CONFIGURAÇÃO DE LOG ---
 nome_arquivo_log = f"{datetime.now().strftime('%Y-%m-%d')}_sistema.log"
 caminho_log = os.path.join(DIR_LOGS, nome_arquivo_log)
 
@@ -35,8 +33,6 @@ def get_env_with_src():
     original_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{DIR_SRC}{os.pathsep}{original_path}"
     return env
-
-# --- FUNÇÕES EXECUTORAS ---
 
 def run_etl(script_name, description):
     """Executa um script da pasta src/etl."""
@@ -100,13 +96,10 @@ def run_ai_training(script_name, description, forcar_treino=False):
     subprocess.run([PYTHON_EXEC, script_path], env=get_env_with_src())
     logger.info(f"SUCESSO: {description} finalizado em {round(time.time() - inicio, 2)}s.")
 
-# --- INICIALIZADORES DE SERVIÇOS ---
-
 def start_api():
     logger.info("INICIANDO API PRINCIPAL (Backend 8000)...")
     log_api = open(os.path.join(DIR_LOGS, "api_service.log"), "w")
     
-    # Windows não suporta workers múltiplos bem, usa apenas 1 worker
     import platform
     workers = "1" if platform.system() == "Windows" else "4"
     
@@ -143,8 +136,6 @@ def start_dashboard():
         env=get_env_with_src()
     )
     return processo
-
-# --- FLUXO PRINCIPAL ---
 
 if __name__ == "__main__":
     logger.info("--- ⚡ INICIANDO SISTEMA GRIDSCOPE (MODO INTELIGENTE) ⚡ ---")

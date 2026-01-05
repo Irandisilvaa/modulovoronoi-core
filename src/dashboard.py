@@ -12,12 +12,9 @@ import urllib.parse
 from datetime import date
 import warnings
 
-# --- SUPRESSÃO DE AVISOS (CLEAN LOGS) ---
-# Ignora avisos de depreciação do Streamlit e alertas de geometria do GeoPandas que não afetam a lógica
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
-# Garante que o Python encontre os módulos da pasta raiz
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -94,20 +91,17 @@ def consultar_simulacao(subestacao, data_escolhida):
 
     data_str = data_escolhida.strftime("%d-%m-%Y")
 
-    subestacao_id = subestacao["id"]  # ou subestacao.id
+    subestacao_id = subestacao["id"]
     id_seguro = urllib.parse.quote(subestacao_id)
 
     url = f"http://127.0.0.1:8000/simulacao/{id_seguro}?data={data_str}"
 
     try:
-        # Timeout de 10s para garantir conexões lentas
         response = requests.get(url, timeout=10)
 
-        # Se a API responder, retorna o JSON
         if response.status_code == 200:
             return response.json()
 
-        # Se der erro 404 ou 500, loga mas não quebra o dashboard
         else:
             return None
 
@@ -149,7 +143,6 @@ def obter_previsao_ia_cached(subestacao, data_str, potencia_gd):
     }
     return consultar_ia_predict(payload)
 
-# --- CARREGAMENTO INICIAL ---
 gdf, df_mercado = obter_dados_dashboard()
 
 if gdf is None or df_mercado is None:
@@ -162,10 +155,8 @@ st.sidebar.title("GridScope Core")
 st.sidebar.divider()
 
 mapa_opcoes = {}
-# Varre o DataFrame para garantir que só mostramos o que existe
 if 'subestacao' in df_mercado.columns:
     for idx, row in df_mercado.iterrows():
-        # Tenta pegar ID tecnico se existir, senão usa indice
         id_tec = row.get('id_tecnico', idx)
         label = row['subestacao'] # Ex: "ATALAIA (ID: 15)"
         mapa_opcoes[label] = id_tec
@@ -182,7 +173,6 @@ modo = "Auditoria (Histórico)" if data_analise < date.today() else "Operação 
 st.sidebar.info(f"Modo Atual: {modo}")
 
 # --- FILTRAGEM DE DADOS ---
-# 1. Tenta achar no mapa (GDF)
 area_sel = gdf[gdf["COD_ID"].astype(str) == str(id_escolhido)]
 
 centroid_existe = False
@@ -196,10 +186,8 @@ if not area_sel.empty:
         c = area_sel.geometry.centroid.iloc[0]
         lat_c, lon_c = c.y, c.x
 else:
-    # Coordenadas padrão (Aracaju) se não achar geometria
     lat_c, lon_c = -10.9472, -37.0731
 
-# 2. Busca dados de mercado (JSON)
 try:
     if 'id_tecnico' in df_mercado.columns:
           dados_filtrados = df_mercado[df_mercado["id_tecnico"].astype(str) == str(id_escolhido)]
@@ -221,7 +209,6 @@ except Exception as e:
     st.error(f"Erro ao recuperar dados da tabela: {e}")
     st.stop()
 
-# --- CONVERSÃO SEGURA DE TIPOS ---
 metricas = converter_para_dict(dados_raw.get("metricas_rede", {}))
 dados_gd = converter_para_dict(dados_raw.get("geracao_distribuida", {}))
 perfil = converter_para_dict(dados_raw.get("perfil_consumo", {}))
@@ -231,7 +218,7 @@ st.title(f"Monitoramento: {subestacao_obj}")
 st.caption(f"ID Técnico: {id_escolhido}")
 st.markdown(f"**Localização:** Aracaju - SE | **Status:** Conectado")
 
-# --- ROW 1: KPIs (Sempre Visíveis) ---
+# --- ROW 1: KPIs  ---
 st.header("Infraestrutura de Rede")
 k1, k2, k3, k4 = st.columns(4)
 with k1: st.metric("Total de Clientes", f"{metricas.get('total_clientes', 0):,}".replace(",", "."))
@@ -333,7 +320,6 @@ with tab_visao_geral:
                 chave_limpa = k.strip()
                 v_dict = converter_para_dict(v)
 
-                # Prioriza 'consumo_anual_mwh', fallback 'ENE_12'
                 val_candidato = (v_dict.get("consumo_anual_mwh") or v_dict.get("ENE_12") or 0)
                 val_float = limpar_float(val_candidato)
 
