@@ -139,7 +139,7 @@ def consultar_ia_predict(payload):
     except Exception as e:
         return None, str(e)
 
-'''st.cache_data(ttl=600, show_spinner=False)'''
+@st.cache_data(ttl=600, show_spinner=False)
 def obter_previsao_ia_cached(subestacao, data_str, potencia_gd):
     payload = {
         "subestacao_id": subestacao["id"],
