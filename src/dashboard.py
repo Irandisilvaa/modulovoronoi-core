@@ -270,7 +270,7 @@ with tab_visao_geral:
     st.subheader("📍 Área de Cobertura Geográfica")
 
     if centroid_existe:
-        m = folium.Map(location=[lat_c, lon_c], zoom_start=13)
+        m = folium.Map(location=[lat_c, lon_c], zoom_start=13, scrollWheelZoom=False)
 
         def style_fn(feature):
             feature_id = feature['properties'].get('COD_ID')
