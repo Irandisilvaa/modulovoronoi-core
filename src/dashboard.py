@@ -42,7 +42,7 @@ def formatar_br(valor):
     if isinstance(valor, str): return valor
     try:
         return f"{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except (ValueError, TypeError):
         return str(valor)
 
 def converter_para_dict(dado):
@@ -133,7 +133,7 @@ def consultar_ia_predict(payload):
     except Exception as e:
         return None, str(e)
 
-'''st.cache_data(ttl=600, show_spinner=False)'''
+@st.cache_data(ttl=600, show_spinner=False)
 def obter_previsao_ia_cached(subestacao, data_str, potencia_gd):
     payload = {
         "subestacao_id": subestacao["id"],
@@ -257,7 +257,7 @@ with tab_visao_geral:
     st.subheader("📍 Área de Cobertura Geográfica")
 
     if centroid_existe:
-        m = folium.Map(location=[lat_c, lon_c], zoom_start=13)
+        m = folium.Map(location=[lat_c, lon_c], zoom_start=13, scrollWheelZoom=False)
 
         def style_fn(feature):
             feature_id = feature['properties'].get('COD_ID')
