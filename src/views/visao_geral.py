@@ -21,16 +21,15 @@ def calcular_criticidade(potencia_gd_kw, consumo_anual_mwh):
     if consumo_anual_mwh == 0:
         return "NORMAL", "#28a745"
     
-    # Estimativa de geração anual: potência * 4.5h/dia * 365 dias / 1000 (conversão para MWh)
     geracao_estimada_mwh = (potencia_gd_kw * 4.5 * 365) / 1000
     percentual_injecao = (geracao_estimada_mwh / consumo_anual_mwh) * 100
     
     if percentual_injecao < 15:
-        return "NORMAL", "#28a745"  # Verde
+        return "NORMAL", "#28a745"  
     elif percentual_injecao < 30:
-        return "MÉDIO", "#ffc107"   # Amarelo
+        return "MÉDIO", "#ffc107"  
     else:
-        return "CRÍTICO", "#dc3545"  # Vermelho
+        return "CRÍTICO", "#dc3545" 
 
 def agregar_metricas_totais(df_mercado):
     """
@@ -194,7 +193,7 @@ def criar_mapa_voronoi_semaforo(gdf, df_mercado):
 def render_view():
     """Renderiza a view de Panorama Geral."""
     st.title("⚡ Panorama Geral do Sistema")
-    st.markdown("Visão executiva de todas as subestações e indicadores agregados")
+    st.markdown("Visão geral de todas as subestações e indicadores agregados")
     
     try:
         from utils import carregar_dados_cache
@@ -234,7 +233,7 @@ def render_view():
     
     with col3:
         st.metric(
-            label="☀️ Painéis Solares",
+            label="☀️ Unidades MMGD",
             value=f"{metricas['total_paineis']:,}".replace(",", ".")
         )
     
@@ -410,4 +409,4 @@ def render_view():
     - Capacidade de geração instalada: **{metricas['total_potencia_kw']:,.2f} kW**
     """.replace(",", "."))
     
-    st.caption(f"GridScope v5.0 Enterprise | Dashboard Executivo")
+    st.caption(f"GridScope v5.0 Enterprise | Dashboard ")

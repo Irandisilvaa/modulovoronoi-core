@@ -11,8 +11,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import DIR_DADOS, ANEEL_API_HUB_URL, DISTRIBUIDORA_ALVO
 
 def baixar_e_extrair(url, destino):
-    print(f"\n⬇️  INICIANDO DOWNLOAD...")
-    print(f"🔗 Origem: {url}")
+    print(f"\n ⬇INICIANDO DOWNLOAD...")
+    print(f"Origem: {url}")
     
     caminho_zip = os.path.join(destino, "temp_download.zip")
     
@@ -24,7 +24,7 @@ def baixar_e_extrair(url, destino):
             
             ct = r.headers.get('content-type', '').lower()
             if 'html' in ct:
-                print(f"⚠️  ALERTA: O link retornou uma página HTML ({ct}). Pode não ser um ZIP direto.")
+                print(f"ALERTA: O link retornou uma página HTML ({ct}). Pode não ser um ZIP direto.")
             
             total_size = int(r.headers.get('content-length', 0))
             baixado = 0
@@ -45,7 +45,7 @@ def baixar_e_extrair(url, destino):
             os.remove(caminho_zip)
             return None
 
-        print(f"📦 Extraindo para: {destino} ...")
+        print(f"Extraindo para: {destino} ...")
         gdb_extraido = None
         
         with zipfile.ZipFile(caminho_zip, 'r') as zip_ref:
@@ -62,36 +62,36 @@ def baixar_e_extrair(url, destino):
         os.remove(caminho_zip)
         
         if gdb_extraido:
-            print("✅ Sucesso!")
+            print("Sucesso!")
             return gdb_extraido
         else:
-            print("⚠️  ZIP extraído, mas a pasta '.gdb' não foi identificada automaticamente.")
+            print("ZIP extraído, mas a pasta '.gdb' não foi identificada automaticamente.")
             return "VERIFIQUE_A_PASTA_DADOS"
 
     except Exception as e:
-        print(f"\n❌ Falha técnica: {e}")
+        print(f"\nFalha técnica: {e}")
         if os.path.exists(caminho_zip):
             os.remove(caminho_zip)
         return None
 
 def verificar_aneel():
-    print(f"📡 Monitor ANEEL (ArcGIS Hub)")
-    print(f"🎯 Alvo: '{DISTRIBUIDORA_ALVO}'")
+    print(f"Monitor ANEEL (ArcGIS Hub)")
+    print(f"Alvo: '{DISTRIBUIDORA_ALVO}'")
     
     try:
         params = {"q": DISTRIBUIDORA_ALVO, "limit": 30}
         response = requests.get(ANEEL_API_HUB_URL, params=params, timeout=15)
         
         if response.status_code != 200:
-            print(f"❌ Erro API: {response.status_code}")
+            print(f"Erro API: {response.status_code}")
             return
 
         resultados = response.json().get('features', [])
         if not resultados:
-            print("❌ Nenhum resultado encontrado.")
+            print("Nenhum resultado encontrado.")
             return
 
-        print(f"🔎 Analisando {len(resultados)} itens...")
+        print(f"Analisando {len(resultados)} itens...")
 
         candidatos = []
         termos = DISTRIBUIDORA_ALVO.upper().split()
@@ -104,7 +104,7 @@ def verificar_aneel():
                 candidatos.append(props)
 
         if not candidatos:
-            print("❌ Nenhum arquivo compatível.")
+            print("Nenhum arquivo compatível.")
             return
 
         def criterio(item):
@@ -131,8 +131,8 @@ def verificar_aneel():
         else:
             url_download = f"https://dadosabertos-aneel.opendata.arcgis.com/datasets/{id_arquivo}_0.geodatabase"
 
-        print(f"\n🏆 ARQUIVO VENCEDOR:")
-        print(f"📂 {nome_final}")
+        print(f"\nARQUIVO VENCEDOR:")
+        print(f"{nome_final}")
         
         arquivo_ctrl = os.path.join(DIR_DADOS, "metadata_aneel.json")
         baixar = True
@@ -141,12 +141,12 @@ def verificar_aneel():
             with open(arquivo_ctrl, 'r') as f:
                 meta = json.load(f)
                 if meta.get('id') == id_arquivo and meta.get('folder_name'):
-                    print("⏸️  Versão já existente.")
+                    print("⏸Versão já existente.")
                     baixar = False
         
         if baixar:
-            print("⚠️  NOVA VERSÃO! Baixando...")
-            print(f"🔗 Tentando baixar de: {url_download}")
+            print("NOVA VERSÃO! Baixando...")
+            print(f"Tentando baixar de: {url_download}")
             
             nome_gdb = baixar_e_extrair(url_download, DIR_DADOS)
             
@@ -160,10 +160,10 @@ def verificar_aneel():
                         'id': id_arquivo,
                         'checked_at': datetime.now().isoformat()
                     }, f, indent=4)
-                print(f"\n🔔 SUCESSO! .env deve ficar: FILE_GDB={nome_gdb}")
+                print(f"\nSUCESSO! .env deve ficar: FILE_GDB={nome_gdb}")
 
     except Exception as e:
-        print(f"❌ Erro: {e}")
+        print(f"Erro: {e}")
 
 if __name__ == "__main__":
     verificar_aneel()

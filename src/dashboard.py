@@ -26,7 +26,7 @@ st.sidebar.markdown("---")
 
 navegacao = st.sidebar.radio(
     "Navegue pelo Sistema:",
-    ["🔍 Análise por Subestação (IA)", "📊 Visão Geral (Executivo)"]
+    ["🔍 Análise por Subestação (IA)", "📊 Visão Geral"]
 )
 
 st.sidebar.markdown("---")

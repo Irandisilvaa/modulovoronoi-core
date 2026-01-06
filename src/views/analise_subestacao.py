@@ -4,32 +4,41 @@ import plotly.express as px
 import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
-import requests
 import os
 import sys
 import ast
-import urllib.parse
 from datetime import date
 import warnings
+
+try:
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    import tab_ia
+except ImportError:
+    tab_ia = None 
 
 def render_view():
     warnings.filterwarnings("ignore", category=UserWarning)
     warnings.filterwarnings("ignore", message=".*use_container_width.*")
 
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
 
     try:
-        from utils import carregar_dados_cache
-        from etl.etl_ai_consumo import buscar_dados_reais_para_ia
+        from utils import carregar_dados_cache, limpar_float
     except ImportError as e:
-        st.error(f"Erro de importação: {e}. Verifique se 'utils.py' e 'etl/etl_ai_consumo.py' existem.")
+        st.error(f"Erro de importação: {e}. Verifique se 'utils.py' existe na raiz.")
         st.stop()
 
-    CATEGORIAS_ALVO = ["Residencial", "Comercial", "Industrial"]
+    CATEGORIAS_ALVO = ["Residencial", "Comercial", "Industrial", "Rural", "Poder Público"]
+
     CORES_MAPA = {
-        "Residencial": "#007bff",
-        "Comercial": "#ffc107",
-        "Industrial": "#dc3545",
+      "Residencial": "#007bff",        
+      "Comercial": "#ffc107",          
+      "Industrial": "#dc3545",         
+      "Rural": "#28a745",              
+      "Poder Público": "#6f42c1",      
     }
 
     def formatar_br(valor):
@@ -51,24 +60,6 @@ def render_view():
                 return {}
         return {}
 
-    def limpar_float(valor):
-        """
-        Converte qualquer formato de número (texto com vírgula, ponto, etc) para float.
-        """
-        if isinstance(valor, (int, float)):
-            return float(valor)
-        if isinstance(valor, str):
-            val_limpo = valor.replace("R$", "").strip()
-            try:
-                if "," in val_limpo and "." in val_limpo:
-                    val_limpo = val_limpo.replace(".", "").replace(",", ".")
-                elif "," in val_limpo:
-                    val_limpo = val_limpo.replace(",", ".")
-                return float(val_limpo)
-            except ValueError:
-                return 0.0
-        return 0.0
-
     @st.cache_data
     def obter_dados_dashboard():
         """Carrega dados geoespaciais e de mercado (cacheado)."""
@@ -80,61 +71,7 @@ def render_view():
         except Exception as e:
             st.error(f"Erro ao processar dados de cache: {e}")
             return None, None
-
-    def consultar_simulacao(subestacao, data_escolhida):
-        """Consulta API de Simulação Solar (Backend 8000) com tratamento de erro detalhado."""
-
-        data_str = data_escolhida.strftime("%d-%m-%Y")
-
-        subestacao_id = subestacao["id"]
-        id_seguro = urllib.parse.quote(subestacao_id)
-
-        url = f"http://127.0.0.1:8000/simulacao/{id_seguro}?data={data_str}"
-
-        try:
-            response = requests.get(url, timeout=10)
-
-            if response.status_code == 200:
-                return response.json()
-
-            else:
-                return None
-
-        except requests.exceptions.ConnectionError:
-            return None
-        except requests.exceptions.Timeout:
-            return None
-        except Exception as e:
-            return None
-
-    def consultar_ia_predict(payload):
-        """Consulta crua à API de Inteligência Artificial (Backend 8001)."""
-        try:
-            resp = requests.post(
-                "http://127.0.0.1:8001/predict/duck-curve",
-                json=payload,
-                timeout=8
-            )
-            if resp.status_code == 200:
-                return resp.json(), None
-            elif resp.status_code == 422:
-                return None, f"Erro 422: Dados inválidos (API recusou payload)."
-            else:
-                return None, f"Erro na API: {resp.status_code}"
-        except requests.exceptions.ConnectionError:
-            return None, "Serviço de IA Offline (Porta 8001)"
-        except Exception as e:
-            return None, str(e)
-
-    def obter_previsao_ia_cached(subestacao, data_str, potencia_gd):
-        payload = {
-            "subestacao_id": subestacao["id"],
-            "data_alvo": data_str,
-            "capacidade_gd_mw": float(potencia_gd) / 1000 if potencia_gd else 0.0,
-            "fator_sol": 0.85
-        }
-        return consultar_ia_predict(payload)
-
+        
     gdf, df_mercado = obter_dados_dashboard()
 
     if gdf is None or df_mercado is None:
@@ -145,7 +82,7 @@ def render_view():
     if 'subestacao' in df_mercado.columns:
         for idx, row in df_mercado.iterrows():
             id_tec = row.get('id_tecnico', idx)
-            label = row['subestacao']  # Ex: "ATALAIA (ID: 15)"
+            label = row['subestacao']  
             mapa_opcoes[label] = id_tec
 
     if not mapa_opcoes:
@@ -159,20 +96,18 @@ def render_view():
     modo = "Auditoria (Histórico)" if data_analise < date.today() else "Operação (Tempo Real/Prev)"
     st.sidebar.info(f"Modo Atual: {modo}")
 
-    # --- FILTRAGEM DE DADOS ---
     area_sel = gdf[gdf["COD_ID"].astype(str) == str(id_escolhido)]
 
     centroid_existe = False
+    lat_c, lon_c = -10.9472, -37.0731 
+
     if not area_sel.empty:
         centroid_existe = True
         try:
-            centroid = area_sel.to_crs(epsg=3857).geometry.centroid.to_crs(area_sel.crs).iloc[0]
-            lat_c, lon_c = centroid.y, centroid.x
-        except Exception:
             c = area_sel.geometry.centroid.iloc[0]
             lat_c, lon_c = c.y, c.x
-    else:
-        lat_c, lon_c = -10.9472, -37.0731
+        except Exception:
+            pass
 
     try:
         if 'id_tecnico' in df_mercado.columns:
@@ -198,44 +133,43 @@ def render_view():
     dados_gd = converter_para_dict(dados_raw.get("geracao_distribuida", {}))
     perfil = converter_para_dict(dados_raw.get("perfil_consumo", {}))
 
-    # --- CABEÇALHO GLOBAL ---
     st.title(f"Monitoramento: {subestacao_obj['nome']}")
     st.caption(f"ID Técnico: {id_escolhido}")
     st.markdown(f"**Localização:** Aracaju - SE | **Status:** Conectado")
 
-    # --- ROW 1: KPIs  ---
     st.header("Infraestrutura de Rede")
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.metric("Total de Clientes", f"{metricas.get('total_clientes', 0):,}".replace(",", "."))
     with k2:
-        st.metric("Consumo Anual", f"{formatar_br(metricas.get('consumo_anual_mwh', 0))} MWh")
+        st.metric("Consumo Anual (MWh)", f"{formatar_br(metricas.get('consumo_anual_mwh', 0))} ")
     with k3:
-        st.metric("Usinas Ativas (GD)", f"{dados_gd.get('total_unidades', 0)}")
+        st.metric("Unidades MMGD", f"{dados_gd.get('total_unidades', 0)}")
     with k4:
-        st.metric("Potência Solar Instalada", f"{formatar_br(dados_gd.get('potencia_total_kw', 0))} kW")
+        st.metric("Potência Solar Instalada (kW)", f"{formatar_br(dados_gd.get('potencia_total_kw', 0))}")
 
     st.divider()
 
-    tab_visao_geral, tab_ia = st.tabs(["📊 Visão Geral & Perfil", "🧠 Inteligência Artificial & Simulação"])
+    tab_visao_geral, tab_ia_render = st.tabs(["📊 Visão Geral & Perfil", "🧠 Inteligência Artificial & Simulação"])
 
-    # --- ABA 1: VISÃO GERAL ---
     with tab_visao_geral:
         st.subheader("Potência da GD Instalada por Classe")
 
         detalhe_raw = converter_para_dict(dados_gd.get("detalhe_por_classe", {}))
-
-        detalhe_gd = {k: v for k, v in detalhe_raw.items() if k in CATEGORIAS_ALVO}
+        detalhe_gd = {k: v for k, v in detalhe_raw.items() if k in CATEGORIAS_ALVO and v > 0}
 
         if detalhe_gd:
+            detalhe_gd = dict(sorted(detalhe_gd.items(), key=lambda item: item[1], reverse=True))
+            lista_cores = [CORES_MAPA.get(k, '#1f77b4') for k in detalhe_gd.keys()]
+
             fig_barras = go.Figure(data=[go.Bar(
                 x=list(detalhe_gd.keys()),
                 y=list(detalhe_gd.values()),
-                marker_color='#1f77b4',
-                text=[f"{v:,.1f} kW".replace(",", "X").replace(".", ",").replace("X", ".") for v in
-                      detalhe_gd.values()],
+                marker_color=lista_cores, 
+                text=[f"{v:,.1f} kW".replace(",", "X").replace(".", ",").replace("X", ".") for v in detalhe_gd.values()],
                 textposition='auto'
             )])
+            
             fig_barras.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10), yaxis_title="kW")
             st.plotly_chart(fig_barras, use_container_width=True)
         else:
@@ -243,233 +177,123 @@ def render_view():
 
         st.divider()
 
-        # --- PARTE 2: Mapa de Cobertura (Largura Total) ---
         st.subheader("📍 Área de Cobertura Geográfica")
-
         if centroid_existe:
             m = folium.Map(location=[lat_c, lon_c], zoom_start=13, scrollWheelZoom=False)
 
             def style_fn(feature):
                 feature_id = feature['properties'].get('COD_ID')
-                # Comparação segura string vs string
                 is_sel = (str(feature_id) == str(id_escolhido))
                 cor = '#007bff' if is_sel else 'gray'
                 return {'fillColor': cor, 'color': 'white' if is_sel else 'gray', 'weight': 3 if is_sel else 1,
                         'fillOpacity': 0.7 if is_sel else 0.3}
 
             folium.GeoJson(gdf, style_function=style_fn, tooltip=folium.GeoJsonTooltip(fields=["NOM", "COD_ID"],
-                                                                                       aliases=["Subestação:",
-                                                                                                "ID:"])).add_to(m)
+                                                                                     aliases=["Subestação:", "ID:"])).add_to(m)
             st_folium(m, use_container_width=True, height=400)
         else:
-            st.warning("⚠️ Geometria não encontrada para este ID. Mapa indisponível.")
+            st.warning("⚠️ Geometria não encontrada para este ID.")
 
         st.divider()
 
-        # --- PARTE 3: Gráficos de Perfil ---
         st.subheader("📌 Segmentação de Mercado")
 
         col_graf1, col_graf2 = st.columns(2)
 
-        # ESQUERDA: PIZZA (Clientes)
         with col_graf1:
             st.markdown("**Distribuição de Clientes (Qtd)**")
-            dados_pie = []
+            dados_clientes = []
             for k, v in perfil.items():
                 if k in CATEGORIAS_ALVO:
                     v_dict = converter_para_dict(v)
                     val = v_dict.get("qtd_clientes", 0)
                     if val > 0:
-                        dados_pie.append({"Segmento": k, "Valor": val})
+                        dados_clientes.append({"Segmento": k, "Valor": val})
 
-            df_pie = pd.DataFrame(dados_pie)
-            if not df_pie.empty:
-                fig_pie = px.pie(df_pie, values="Valor", names="Segmento", hole=0.4, color="Segmento",
-                                 color_discrete_map=CORES_MAPA)
-                fig_pie.update_layout(
-                    margin=dict(t=20, b=20, l=20, r=20),
-                    height=350,
-                    showlegend=True,
-                    legend=dict(orientation="h", y=-0.1)
-                )
-                fig_pie.update_traces(
-                    textposition='auto',
-                    textinfo='percent+label',
-                    textfont_size=13,
-                    hovertemplate='%{label}<br>Qtd: %{value}<br>%{percent}'
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
+            df_clientes = pd.DataFrame(dados_clientes)
+            if not df_clientes.empty:
+                df_clientes = df_clientes.sort_values(by="Valor", ascending=False)
+                fig_bar_cli = go.Figure(data=[go.Bar(
+                    x=df_clientes["Segmento"],
+                    y=df_clientes["Valor"],
+                    marker_color=[CORES_MAPA.get(s, '#007bff') for s in df_clientes["Segmento"]],
+                    text=df_clientes["Valor"],
+                    textposition='auto'
+                )])
+                fig_bar_cli.update_layout(margin=dict(t=20, b=20), height=350, yaxis_title="Qtd Clientes")
+                st.plotly_chart(fig_bar_cli, use_container_width=True)
             else:
                 st.info("Sem dados de Clientes.")
 
-        # DIREITA: BARRAS
         with col_graf2:
             st.markdown("**Carga por Classe (Consumo MWh)**")
             dados_carga = []
-
             if perfil:
                 for k, v in perfil.items():
-                    if k not in CATEGORIAS_ALVO:
-                        continue
-                    chave_limpa = k.strip()
+                    if k not in CATEGORIAS_ALVO: continue
                     v_dict = converter_para_dict(v)
-
                     val_candidato = (v_dict.get("consumo_anual_mwh") or v_dict.get("ENE_12") or 0)
                     val_float = limpar_float(val_candidato)
-
                     if val_float > 0:
-                        dados_carga.append({"Segmento": chave_limpa, "Valor": val_float})
-
+                        dados_carga.append({"Segmento": k, "Valor": val_float})
+            
             df_carga = pd.DataFrame(dados_carga)
-
             if not df_carga.empty:
                 df_carga = df_carga.sort_values(by="Valor", ascending=False)
-
-                fig_carga = go.Figure(data=[
-                    go.Bar(
-                        x=df_carga["Segmento"],
-                        y=df_carga["Valor"],
-                        marker_color=[CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"]],
-                        text=[f"{val:,.0f} MWh".replace(",", "X").replace(".", ",").replace("X", ".") for val in
-                              df_carga["Valor"]],
-                        textposition='auto',
-                        hovertemplate='<b>%{x}</b><br>Consumo: %{y:,.2f} MWh<extra></extra>'
-                    )
-                ])
-                fig_carga.update_layout(
-                    margin=dict(t=20, b=20, l=20, r=20),
-                    height=350,
-                    yaxis_title="Consumo Anual (MWh)",
-                    showlegend=False,
-                    xaxis=dict(title=None)
-                )
+                fig_carga = go.Figure(data=[go.Bar(
+                    x=df_carga["Segmento"],
+                    y=df_carga["Valor"],
+                    marker_color=[CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"]],
+                    text=[f"{val:,.0f}".replace(",", ".") for val in df_carga["Valor"]],
+                    textposition='auto'
+                )])
+                fig_carga.update_layout(margin=dict(t=20, b=20), height=350, yaxis_title="MWh")
                 st.plotly_chart(fig_carga, use_container_width=True)
             else:
-                st.warning("Gráfico vazio. O consumo anual está zerado no arquivo JSON.")
+                st.info("Sem dados de Carga.")
 
         st.divider()
 
-        # Tabela e Relatório
-        st.header("📋 Relatório Técnico & Ações")
+        st.header("📋 Relatório Técnico")
         col_table, col_actions = st.columns([2, 1])
 
         with col_table:
             st.subheader("Dados Consolidados")
             dados_consolidados = {
-                "Parâmetro": [
-                    "Subestação Alvo", "ID Técnico", "Consumo Anual Total",
-                    "Potência GD Instalada", "Qtd. Usinas Solares",
-                    "Total Clientes", "Criticidade da Rede"
-                ],
+                "Parâmetro": ["Subestação", "ID", "Consumo Anual", "Potência GD", "Clientes"],
                 "Valor": [
-                    str(subestacao_obj), str(id_escolhido),
+                    subestacao_obj['nome'], 
+                    str(id_escolhido),
                     f"{formatar_br(metricas.get('consumo_anual_mwh', 0))} MWh",
                     f"{formatar_br(dados_gd.get('potencia_total_kw', 0))} kW",
-                    f"{dados_gd.get('total_unidades', 0)} unid.",
-                    f"{metricas.get('total_clientes', 0)}",
-                    metricas.get('nivel_criticidade_gd', 'NORMAL')
+                    str(metricas.get('total_clientes', 0))
                 ]
             }
             st.dataframe(pd.DataFrame(dados_consolidados), use_container_width=True, hide_index=True)
 
         with col_actions:
-            st.subheader("Diagnóstico Automático")
+            st.subheader("Diagnóstico")
             potencia_kw = limpar_float(dados_gd.get('potencia_total_kw', 0))
-            geracao_est_mwh = (potencia_kw * 4.5 * 365) / 1000
             consumo_mwh = limpar_float(metricas.get('consumo_anual_mwh', 1))
-
             if consumo_mwh == 0: consumo_mwh = 1
-
+            
+            geracao_est_mwh = (potencia_kw * 4.5 * 365) / 1000
             penetracao = (geracao_est_mwh / consumo_mwh) * 100
-            st.write(f"**Nível de Penetração GD:** {penetracao:.1f}%")
-
+            
+            st.write(f"**Penetração GD:** {penetracao:.1f}%")
             if penetracao > 25:
-                st.warning("⚠️ **Saturação Alta:** Risco de inversão de fluxo.")
-            elif penetracao > 10:
-                st.info("ℹ️ **Atenção:** Monitorar horários de pico.")
+                st.warning("⚠️ Risco de inversão de fluxo.")
             else:
-                st.success("✅ **Rede Estável:** Capacidade disponível.")
+                st.success("✅ Rede com capacidade.")
 
-            csv = pd.DataFrame(dados_consolidados).to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Baixar Relatório CSV", data=csv, file_name=f"relatorio_{id_escolhido}.csv",
-                               mime="text/csv", use_container_width=True)
-
-    # --- ABA 2: INTELIGÊNCIA ARTIFICIAL ---
-    with tab_ia:
-        st.subheader(f"☀️ Simulação VPP & Duck Curve: {data_analise.strftime('%d/%m/%Y')}")
-
-        dados_sim = consultar_simulacao(subestacao_obj, data_analise)
-
-        if dados_sim:
-            sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Clima", dados_sim.get('condicao_tempo', '--'))
-            sc2.metric("Irradiação", f"{dados_sim.get('irradiacao_solar_kwh_m2', 0)} kWh/m²")
-            sc3.metric("Temp. Máx", f"{dados_sim.get('temperatura_max_c', 0)}°C")
-            sc4.metric("Perda Térmica", f"{dados_sim.get('fator_perda_termica', 0)}%")
-
-            impacto = dados_sim.get("impacto_na_rede", "NORMAL")
-            if "CRITICO" in str(impacto).upper() or "ALTA" in str(impacto).upper():
-                st.error(f"🚨 Status da Rede: {impacto}")
-            else:
-                st.success(f"✅ Status da Rede: {impacto}")
+    with tab_ia_render:
+        if tab_ia is not None:
+            try:
+                tab_ia.render_tab_ia(subestacao_obj, data_analise, dados_gd)
+            except Exception as e:
+                st.error(f"Erro ao executar módulo de IA: {e}")
+                st.code(str(e))
         else:
-            st.warning("⚠️ VPP Offline ou não conectou (Porta 8000). Verifique o terminal para ver o erro detalhado.")
-
-        st.divider()
-
-        st.header("🧠 Análise Preditiva (AI Duck Curve)")
-
-        with st.spinner(f"IA: Calculando fluxo energético para {data_analise.strftime('%d/%m')}..."):
-
-            payload_duck = {
-                "subestacao_id": subestacao_obj["id"],
-                "data_alvo": data_analise.isoformat(),
-                "capacidade_gd_mw": float(
-                    limpar_float(dados_gd.get("potencia_total_kw", 0)) / 1000
-                ),
-                "fator_sol": 0.85
-            }
-
-            res_ia, erro_ia = consultar_ia_predict(payload_duck)
-
-            if res_ia:
-                if 'timeline' in res_ia and 'consumo_mwh' in res_ia and len(res_ia['timeline']) > 0:
-                    analise_texto = res_ia.get('analise', 'Análise processada')
-                    is_alerta = res_ia.get('alerta', False)
-
-                    if is_alerta:
-                        st.error(f"**ALERTA DETECTADO:** {analise_texto}", icon="⚠️")
-                    else:
-                        st.success(f"**OPERAÇÃO NORMAL:** {analise_texto}", icon="✅")
-
-                    fig_duck = go.Figure()
-                    fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['consumo_mwh'], name="Carga (Consumo)",
-                                                  fill='tozeroy', line=dict(color='#007bff', width=2),
-                                                  fillcolor='rgba(0, 123, 255, 0.1)'))
-                    fig_duck.add_trace(go.Scatter(x=res_ia['timeline'], y=res_ia['geracao_mwh'], name="Geração Solar",
-                                                  line=dict(color='#ffc107', width=3)))
-                    fig_duck.add_trace(
-                        go.Scatter(x=res_ia['timeline'], y=res_ia['carga_liquida_mwh'], name="Carga Líquida (Saldo)",
-                                   line=dict(color='white', dash='dot', width=2)))
-                    fig_duck.add_hline(y=0, line_dash="solid", line_color="#dc3545", annotation_text="Limite Reverso")
-                    fig_duck.update_layout(height=500, title="Projeção Energética (24h)", hovermode="x unified",
-                                           legend=dict(orientation="h", y=1.1))
-                    st.plotly_chart(fig_duck, use_container_width=True)
-
-                    kp1, kp2, kp3 = st.columns(3)
-                    pico_solar = max(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
-                    min_liquida = min(res_ia['carga_liquida_mwh']) if res_ia['carga_liquida_mwh'] else 0
-                    cons_tot = sum(res_ia['consumo_mwh']) if res_ia['consumo_mwh'] else 0
-                    ger_tot = sum(res_ia['geracao_mwh']) if res_ia['geracao_mwh'] else 0
-                    cobertura = (ger_tot / cons_tot * 100) if cons_tot > 0 else 0
-
-                    kp1.metric("Pico de Geração Solar", f"{pico_solar:.2f} MW")
-                    kp2.metric("Menor Carga Líquida", f"{min_liquida:.2f} MW",
-                               delta="Crítico" if min_liquida < 0 else "Estável", delta_color="inverse")
-                    kp3.metric("Cobertura Solar Diária", f"{cobertura:.1f}%")
-                else:
-                    st.error("Dados incompletos retornados pela IA.")
-            else:
-                st.warning(f"Não foi possível calcular a curva. Detalhe: {erro_ia}")
+            st.error("❌ O arquivo 'tab_ia.py' não foi encontrado na pasta 'views'. Verifique se o nome está correto (com underline, não ponto).")
 
     st.caption(f"GridScope v4.9 Enterprise | Dados atualizados em: {date.today().strftime('%d/%m/%Y')}")
