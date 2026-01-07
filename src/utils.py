@@ -3,6 +3,7 @@ import os
 import geopandas as gpd
 import pandas as pd
 import sys
+import math  # ✅ ADICIONADO (necessário para tratar NaN)
 
 # Define nomes de arquivo que você está usando (baseado no seu erro)
 FILENAME_GEOJSON = "subestacoes_logicas_aracaju.geojson"
@@ -32,17 +33,32 @@ def encontrar_arquivo(nome_arquivo):
     return None
 
 def limpar_float(val):
-    """Converte valores numéricos para float (trata vírgula BR)."""
-    if val is None or val == "": return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    val_str = str(val).strip()
+    """Converte valores numéricos para float (trata vírgula BR e NaN)."""
     try:
+        if val is None or val == "":
+            return 0.0
+
+        # ✅ TRATAMENTO DE NaN (pandas / numpy / float)
+        if isinstance(val, float) and math.isnan(val):
+            return 0.0
+
+        if isinstance(val, (int, float)):
+            return float(val)
+
+        val_str = str(val).strip()
+
+        if val_str.lower() in ["nan", "none", "--"]:
+            return 0.0
+
+        # Trata formato brasileiro
         if ',' in val_str and '.' in val_str:
             val_str = val_str.replace('.', '').replace(',', '.')
         elif ',' in val_str:
             val_str = val_str.replace(',', '.')
+
         return float(val_str)
-    except ValueError:
+
+    except Exception:
         return 0.0
 
 def carregar_dados_cache():
@@ -82,7 +98,11 @@ def carregar_dados_cache():
 
 def fundir_dados_geo_mercado(gdf, dados_mercado):
     """Cruza dados."""
-    geo_map = {str(row['NOM']).strip().upper(): row['geometry'] for _, row in gdf.iterrows() if pd.notnull(row['NOM'])}
+    geo_map = {
+        str(row['NOM']).strip().upper(): row['geometry']
+        for _, row in gdf.iterrows()
+        if pd.notnull(row['NOM'])
+    }
     dados_finais = []
     lista = dados_mercado if isinstance(dados_mercado, list) else dados_mercado.to_dict('records')
 
