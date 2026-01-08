@@ -80,7 +80,10 @@ def start_api_process(module_name, port, log_filename, description):
 
 
 def run_pipeline():
-    run_script(os.path.join(DIR_SRC, "etl", "etl_ai_consumo.py"), "ETL: Carga Consumo (BDGD)")
+    logger.info("📦 Migrando dados do GDB para PostgreSQL...")
+    if not run_script(os.path.join(DIR_SRC, "etl", "migracao_db.py"), "Migração Database (GDB -> SQL)"):
+        logger.error("🛑 Falha crítica na migração. Abortando inicialização.")
+        sys.exit(1)
 
     run_script(os.path.join(DIR_SRC, "modelos", "processar_voronoi.py"), "Gerando Territórios (Voronoi)")
 
