@@ -24,17 +24,23 @@ def consultar_simulacao(subestacao_id, data_escolhida):
     Consulta a API de Simulação Física/VPP (Porta 8000).
     """
     data_str = data_escolhida.strftime("%d-%m-%Y")
+    
+    if not subestacao_id or str(subestacao_id).lower() == 'none':
+        return None, "ID da Subestação não identificado."
+
     id_seguro = urllib.parse.quote(str(subestacao_id))
     
-    url = f"http://127.0.0.1:8000/simulacao/{id_seguro}?data={data_str}"
+    # URL configurada para funcionar tanto em Docker (gridscope_api) quanto local (localhost)
+    # Tenta localhost primeiro pois o usuário está rodando no Windows Host
+    url = f"http://localhost:8000/simulacao/{id_seguro}?data={data_str}"
 
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
-            return response.json()
-        return None
-    except requests.exceptions.RequestException:
-        return None
+            return response.json(), None
+        return None, f"Erro {response.status_code}: {response.text[:100]}"
+    except Exception as e:
+        return None, f"Erro Conexão: {str(e)}"
 
 def consultar_ia_predict(payload):
     """
@@ -61,14 +67,19 @@ def render_tab_ia(subestacao_obj, data_analise, dados_gd):
     """
     Renderiza todo o conteúdo da aba de Inteligência Artificial.
     (Versão com suporte a: geração em y2, gráfico separado para classes,
-     recalculo de escala baseado em séries visíveis. Ajustes para garantir
-     curvas por classe a partir do total e linhas mais nítidas/grossas. Classes
-     com comportamento horário distinto e soma horária igual ao consumo total.)
+    recalculo de escala baseado em séries visíveis. Ajustes para garantir
+    curvas por classe a partir do total e linhas mais nítidas/grossas. Classes
+    com comportamento horário distinto e soma horária igual ao consumo total.)
     """
     st.subheader(f"☀️ Simulação VPP & Duck Curve: {data_analise.strftime('%d/%m/%Y')}")
 
-    # PARTE A: DADOS FÍSICOS (PORTA 8000)
-    dados_sim = consultar_simulacao(subestacao_obj.get("id"), data_analise)
+    # Tenta obter ID ou NOME. O endpoint espera nome ou ID que consiga resolver. 
+    identificador = (subestacao_obj.get("NOME") or 
+                    subestacao_obj.get("nome") or 
+                    subestacao_obj.get("subestacao") or 
+                    subestacao_obj.get("COD_ID") or 
+                    subestacao_obj.get("id"))
+    dados_sim, erro_sim = consultar_simulacao(identificador, data_analise)
     with st.container():
         c1, c2, c3, c4 = st.columns(4)
         if dados_sim:
@@ -84,11 +95,10 @@ def render_tab_ia(subestacao_obj, data_analise, dados_gd):
         else:
             c1.metric("Clima", "--"); c2.metric("Irradiação", "--")
             c3.metric("Temp. Máx", "--"); c4.metric("Perda Térmica", "--")
-            st.warning("⚠️ API de Simulação (VPP - Porta 8000) não respondeu ou não possui dados para esta data.")
+            st.warning(f"⚠️ VPP Offline ou erro na API (Porta 8000). Detalhe: {erro_sim}")
 
     st.divider()
 
-    # PARTE B: INTELIGÊNCIA ARTIFICIAL (PORTA 8001)
     st.header("🧠 Análise Preditiva (AI Duck Curve)")
 
     dna_atual = dados_gd.get("dna_perfil", {})

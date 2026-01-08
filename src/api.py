@@ -11,11 +11,11 @@ from shapely.geometry import mapping
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
-    from config import PATH_GEOJSON
     from utils import carregar_dados_cache, fundir_dados_geo_mercado
     from cache_redis import cache_json
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"CRITICAL API ERROR: {e}")
+    sys.exit(1)
 
 app = FastAPI(
     title="GridScope API",
