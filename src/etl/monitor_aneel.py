@@ -4,14 +4,13 @@ import os
 import sys
 import re
 import zipfile
-import shutil
 from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import DIR_DADOS, ANEEL_API_HUB_URL, DISTRIBUIDORA_ALVO
 
 def baixar_e_extrair(url, destino):
-    print(f"\n ⬇INICIANDO DOWNLOAD...")
+    print(f"\n⬇INICIANDO DOWNLOAD...")
     print(f"Origem: {url}")
     
     caminho_zip = os.path.join(destino, "temp_download.zip")
@@ -39,7 +38,7 @@ def baixar_e_extrair(url, destino):
         print("") 
 
         if not zipfile.is_zipfile(caminho_zip):
-            print("❌ ERRO: O arquivo baixado não é um ZIP válido.")
+            print("ERRO: O arquivo baixado não é um ZIP válido.")
             with open(caminho_zip, 'r', errors='ignore') as f:
                 print(f"    Conteúdo (início): {f.read(300)}...")
             os.remove(caminho_zip)

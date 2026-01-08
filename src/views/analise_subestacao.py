@@ -9,6 +9,7 @@ import sys
 import ast
 from datetime import date
 import warnings
+import numpy as np  # adicionado para Waffle / operações matriciais
 
 try:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -226,7 +227,7 @@ def render_view():
                 st.info("Sem dados de Clientes.")
 
         with col_graf2:
-            st.markdown("**Carga por Classe (Consumo MWh)**")
+            st.markdown("**Consumo por Classe (MWh)**")
             dados_carga = []
             if perfil:
                 for k, v in perfil.items():
@@ -239,16 +240,111 @@ def render_view():
             
             df_carga = pd.DataFrame(dados_carga)
             if not df_carga.empty:
-                df_carga = df_carga.sort_values(by="Valor", ascending=False)
-                fig_carga = go.Figure(data=[go.Bar(
-                    x=df_carga["Segmento"],
-                    y=df_carga["Valor"],
-                    marker_color=[CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"]],
-                    text=[f"{val:,.0f}".replace(",", ".") for val in df_carga["Valor"]],
-                    textposition='auto'
-                )])
-                fig_carga.update_layout(margin=dict(t=20, b=20), height=350, yaxis_title="MWh")
-                st.plotly_chart(fig_carga, use_container_width=True)
+                # --- calcula percentuais e prepara KPI's ---
+                total = df_carga["Valor"].sum()
+                df_carga["Pct"] = df_carga["Valor"] / total * 100
+                df_carga = df_carga.sort_values(by="Valor", ascending=False).reset_index(drop=True)
+
+                # KPIs percentuais para Residencial / Comercial / Industrial (mostra 0 se não existir)
+                kpi1, kpi2, kpi3 = st.columns(3)
+                def fmt_pct(x):
+                    return f"{x:,.1f}%".replace(",", ".")
+                def pick_pct(term):
+                    r = df_carga[df_carga["Segmento"].str.upper().str.contains(term.upper())]
+                    return float(r["Pct"].iloc[0]) if not r.empty else 0.0
+
+                kpi1.metric("Residencial", fmt_pct(pick_pct("Resid")))
+                kpi2.metric("Comercial", fmt_pct(pick_pct("Comer")))
+                kpi3.metric("Industrial", fmt_pct(pick_pct("Indust")))
+                st.markdown("**Visualização do Perfil de Carga**")
+                modo = st.selectbox("Escolha o tipo de visualização", ["Treemap (áreas proporcionais)", "Waffle (100 caixas)"])
+
+                # cores por segmento
+                color_map_segs = {s: CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"].unique()}
+                colors = [color_map_segs[s] for s in df_carga["Segmento"]]
+
+                if modo.startswith("Treemap"):
+                    # Treemap com labels e percentuais
+                    fig = px.treemap(
+                        df_carga,
+                        path=["Segmento"],
+                        values="Valor",
+                        color="Segmento",
+                        color_discrete_map=color_map_segs,
+                        hover_data={"Valor": True, "Pct": ':.2f'}
+                    )
+                    # usar customdata para exibir % no texto
+                    fig.update_traces(texttemplate="%{label}<br>%{customdata[1]:.1f}%")
+                    fig.update_layout(margin=dict(t=30, b=10), height=360)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                else:
+                    # Waffle chart (10x10 grid = 100 caixas -> 1 caixa = 1%)
+                    # calcula counts por categoria (inteiro)
+                    counts = (df_carga["Pct"].round().astype(int)).tolist()
+                    # corrige soma para 100 devido a arredondamentos
+                    diff = 100 - sum(counts)
+                    # distribui o resto para as maiores categorias
+                    if len(counts) > 0:
+                        idx_sort = np.argsort(df_carga["Valor"].values)[::-1]
+                        i = 0
+                        while diff != 0:
+                            counts[idx_sort[i % len(counts)]] += 1 if diff > 0 else -1
+                            diff = 100 - sum(counts)
+                            i += 1
+
+                    # monta vetor de 100 posições com índice da categoria
+                    grid = np.zeros(100, dtype=int)
+                    pos = 0
+                    for cat_idx, c in enumerate(counts):
+                        if c <= 0:
+                            continue
+                        grid[pos:pos+c] = cat_idx
+                        pos += c
+                    grid = grid.reshape((10, 10))[::-1]  # invert para visual
+
+                    unique_segs = df_carga["Segmento"].tolist()
+                    cmap = [color_map_segs[s] for s in unique_segs]
+
+                    # constrói colorscale discreta para plotly (mapear índices para cores)
+                    if len(cmap) == 1:
+                        colorscale = [[0, cmap[0]], [1, cmap[0]]]
+                    else:
+                        colorscale = []
+                        n = len(cmap)
+                        for i_col, col in enumerate(cmap):
+                            colorscale.append([i_col / max(n-1, 1), col])
+
+                    # Heatmap discreto
+                    fig = go.Figure(go.Heatmap(
+                        z=grid,
+                        colorscale=colorscale,
+                        zmin=0, zmax=max(1, len(cmap)-1),
+                        showscale=False,
+                        xgap=2, ygap=2,
+                        hoverinfo='skip'
+                    ))
+
+                    # Anota percentuais aproximados no centro de cada região
+                    annotations = []
+                    for i, seg in enumerate(unique_segs):
+                        positions = np.argwhere(grid == i)
+                        if positions.size == 0:
+                            continue
+                        mean_pos = positions.mean(axis=0)
+                        pct_val = df_carga.loc[df_carga['Segmento'] == seg, 'Pct'].iloc[0]
+                        annotations.append(dict(
+                            x=mean_pos[1], y=mean_pos[0],
+                            text=f"{seg}<br>{pct_val:.1f}%",
+                            showarrow=False, font=dict(color="white", size=10), align="center"
+                        ))
+
+                    fig.update_layout(annotations=annotations,
+                                      xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                                      yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                                      margin=dict(t=10, b=10), height=360)
+                    st.plotly_chart(fig, use_container_width=True)
+
             else:
                 st.info("Sem dados de Carga.")
 
