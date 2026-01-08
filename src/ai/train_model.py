@@ -3,118 +3,141 @@ import joblib
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
-from datetime import datetime
 import holidays
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(current_dir, "modelos")
-os.makedirs(MODELS_DIR, exist_ok=True)
 
-def gerar_fator_subestacao(identificador: str) -> int:
-    return abs(hash(identificador)) % 10
+MODEL_PATH = os.path.join(current_dir, "modelo_consumo.pkl") 
 
 
-def treinar_modelo_simulado(identificador):
-    identificador_str = str(identificador).strip()
-    nome_arquivo = identificador_str.replace(" ", "_")
+CURVA_RES = np.array([
+    0.4, 0.35, 0.3, 0.3, 0.3, 0.35, 0.5, 0.6, 0.55, 0.5, 
+    0.45, 0.45, 0.45, 0.5, 0.55, 0.6, 0.7, 0.9, 1.2, 1.1, 
+    1.0, 0.9, 0.7, 0.5
+]) 
 
-    print(f"🔄 Treinando modelo para: {identificador_str}")
+CURVA_COM = np.array([
+    0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.5, 0.8, 1.0, 1.1, 
+    1.1, 1.1, 1.0, 1.1, 1.1, 1.1, 1.0, 0.9, 0.6, 0.4, 
+    0.3, 0.25, 0.2, 0.2
+]) 
 
-    try:
-        seed = int(''.join(filter(str.isdigit, identificador_str))) * 97
-    except:
-        seed = sum(ord(c) for c in identificador_str)
+CURVA_IND = np.array([
+    0.7, 0.7, 0.7, 0.7, 0.75, 0.8, 0.9, 0.95, 1.0, 1.0, 
+    1.0, 1.0, 0.95, 1.0, 1.0, 1.0, 0.95, 0.9, 0.8, 0.8, 
+    0.75, 0.75, 0.7, 0.7
+]) 
 
-    np.random.seed(seed)
+CURVA_RUR = np.array([
+    0.3, 0.3, 0.3, 0.4, 0.5, 0.6, 0.7, 0.7, 0.6, 0.6,
+    0.6, 0.6, 0.6, 0.6, 0.6, 0.7, 0.8, 1.0, 0.9, 0.7,
+    0.5, 0.4, 0.3, 0.3
+])
 
-    fator_sub = gerar_fator_subestacao(identificador_str)
-
-    datas = pd.date_range(end=datetime.now(), periods=365 * 24, freq="h")
+def gerar_dados_treino_inteligente():
+    """
+    Gera um dataset massivo misturando aleatoriamente os perfis (DNA)
+    para ensinar o modelo a reagir a qualquer tipo de subestação.
+    """
+    print("🔄 Gerando dataset de treinamento sintético inteligente...")
+    
+    br_holidays = holidays.Brazil()
+    datas = pd.date_range(start="2023-01-01", end="2023-12-31", freq="h")
+    
     features = []
 
-    nome_upper = identificador_str.upper()
-    br_holidays = holidays.Brazil()
-
-    for data in datas:
-        h = data.hour
-
-        if "30290967" in identificador_str:
-            consumo_base = 25 + 8 * np.sin((h - 8) * np.pi / 12)
-        elif "30290937" in identificador_str:
-            consumo_base = 20 + 12 * np.sin((h - 18) * np.pi / 12)
-        elif "CONTORNO" in nome_upper or "SUBESTA6" in nome_upper:
-            consumo_base = 35 + 10 * np.sin((h - 10) * np.pi / 10)
-        elif "INDUSTRIAL" in nome_upper:
-            consumo_base = 45 + np.random.uniform(-3, 3)
-        else:
-            consumo_base = 18 + 12 * np.sin((h - 6) * np.pi / 12)
-            if 18 <= h <= 22:
-                consumo_base += 12
-
-        ruido = np.random.normal(0, 2.5)
-        consumo = max(0, consumo_base + ruido)
-
-        eh_fds = data.dayofweek >= 5
-        eh_feriado = data.date() in br_holidays
-
-        if eh_fds or eh_feriado:
-            consumo *= 0.8
-
-        features.append({
-            "hora": h,
-            "mes": data.month,
-            "dia_semana": data.dayofweek,
-            "dia_ano": data.dayofyear,
-            "ano": data.year,
-            "eh_feriado": int(eh_feriado),
-            "eh_fim_semana": int(eh_fds),
-            "fator_subestacao": fator_sub,
-            "consumo": consumo
-        })
-
-    df = pd.DataFrame(features)
-
-    X = df.drop(columns=["consumo"])
-    y = df["consumo"]
-
-    model = RandomForestRegressor(
-        n_estimators=80,
-        random_state=seed,
-        n_jobs=-1
-    )
-
-    model.fit(X, y)
-
-    path = os.path.join(MODELS_DIR, f"modelo_{nome_arquivo}.pkl")
-    joblib.dump(model, path)
-
-    print(f"✅ Modelo salvo: {path}")
-
-
-if __name__ == "__main__":
-    lista_treino = [
-        "30290967",
-        "30290937",
-        "30290936",
-        "30290965",
-        "30290955",
-        "30290938",
-        "30290969",
-
-        "SUBESTA5",
-        "SUBESTA6",
-        "SUBESTA7",
-        "SUBESTA8",
-        "SUBESTA9",
-        "SE CONTORNO",
-        "Industrial",
-        "Centro",
-        "Zona Norte"
+    perfis_mock = [
+        "SUB_RESIDENCIAL", "SUB_INDUSTRIAL", "SUB_COMERCIAL", "SUB_MISTA", "SUB_RURAL"
     ]
 
-    print(f"🚀 Iniciando treinamento de {len(lista_treino)} modelos...")
+    for i in range(50):
+        tipo_sub = np.random.choice(perfis_mock)
+        identificador_str = f"{tipo_sub}_{i}"    
+        nome_upper = identificador_str.upper()
 
-    for item in lista_treino:
-        treinar_modelo_simulado(item)
+        if "SUB_RESIDENCIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.8, 0.1, 0.1, 0.0
+        elif "SUB_INDUSTRIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.1, 0.1, 0.8, 0.0
+        elif "SUB_COMERCIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.1, 0.8, 0.1, 0.0
+        elif "SUB_RURAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.2, 0.1, 0.0, 0.7
+        else:
+            p_res, p_com, p_ind, p_rur = 0.4, 0.3, 0.3, 0.0
 
-    print("\n✨ Treinamento finalizado! Reinicie o ai_service.py.")
+        curva_mista_base = (CURVA_RES * p_res) + \
+                           (CURVA_COM * p_com) + \
+                           (CURVA_IND * p_ind) + \
+                           (CURVA_RUR * p_rur)
+
+        for data in datas:
+            h = data.hour
+            mes = data.month
+            
+            consumo_base = curva_mista_base[h] * 100 
+            
+            eh_fds = data.dayofweek >= 5
+            eh_feriado = data.date() in br_holidays
+            
+            fator_fds = 0.85 if eh_fds or eh_feriado else 1.0
+            
+            fator_sazonal = 1.0
+            if mes in [12, 1, 2, 3]: # Verão
+                fator_sazonal = 1.15
+            elif mes in [6, 7]: 
+                fator_sazonal = 0.9
+                
+            # Ruído aleatório (realidade)
+            ruido = np.random.normal(0, 0.05)
+            
+            # Cálculo final do target
+            consumo_final = consumo_base * fator_fds * fator_sazonal + ruido
+            consumo_final = max(0.01, consumo_final)
+
+            features.append({
+                "hora": h,
+                "mes": mes,
+                "dia_semana": data.dayofweek,
+                "eh_feriado": int(eh_feriado),
+                "eh_fim_semana": int(eh_fds),
+                # O PULO DO GATO: Passamos o DNA como feature!
+                "pct_residencial": p_res,
+                "pct_comercial": p_com,
+                "pct_industrial": p_ind,
+                "pct_rural": p_rur,
+                # Target
+                "fator_consumo": consumo_final
+            })
+
+    return pd.DataFrame(features)
+
+def treinar_modelo_universal():
+    """
+    Treina um único modelo Random Forest robusto capaz de prever 
+    qualquer perfil de subestação baseado no DNA informado.
+    """
+    df = gerar_dados_treino_inteligente()
+    
+    print(f"📊 Dataset gerado com {len(df)} amostras.")
+    print("🚀 Iniciando treinamento do Modelo Universal...")
+    
+    X = df.drop(columns=["fator_consumo"])
+    y = df["fator_consumo"]
+    
+    model = RandomForestRegressor(
+        n_estimators=100,
+        max_depth=15, 
+        random_state=42,
+        n_jobs=-1
+    )
+    
+    model.fit(X, y)
+    
+    print(f"💾 Salvando modelo em: {MODEL_PATH}")
+    joblib.dump(model, MODEL_PATH)
+    print("✅ Modelo Universal Treinado com Sucesso!")
+
+if __name__ == "__main__":
+    treinar_modelo_universal()

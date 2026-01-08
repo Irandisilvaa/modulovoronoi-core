@@ -212,7 +212,7 @@ def render_view():
                     if val > 0:
                         dados_clientes.append({"Segmento": k, "Valor": val})
 
-            df_pie = pd.DataFrame(dados_pie)
+            df_pie = pd.DataFrame(dados_clientes)
             if not df_pie.empty:
                 fig_pie = px.pie(df_pie, values="Valor", names="Segmento", hole=0.4, color="Segmento",
                                 color_discrete_map=CORES_MAPA)
@@ -308,10 +308,10 @@ def render_view():
             st.download_button(label="📥 Baixar Relatório CSV", data=csv, file_name=f"relatorio_{id_escolhido}.csv",
                             mime="text/csv", use_container_width=True)
 
-    with tab_ia:
+    with tab_ia_render:
         st.subheader(f"☀️ Simulação VPP & Duck Curve: {data_analise.strftime('%d/%m/%Y')}")
 
-        dados_sim = consultar_simulacao(subestacao_obj, data_analise)
+        dados_sim = tab_ia.consultar_simulacao(subestacao_obj, data_analise)
 
         if dados_sim:
             sc1, sc2, sc3, sc4 = st.columns(4)
@@ -343,7 +343,7 @@ def render_view():
                 "fator_sol": 0.85
             }
 
-            res_ia, erro_ia = consultar_ia_predict(payload_duck)
+            res_ia, erro_ia = tab_ia.consultar_ia_predict(payload_duck)
 
             if res_ia:
                 if 'timeline' in res_ia and 'consumo_mwh' in res_ia and len(res_ia['timeline']) > 0:

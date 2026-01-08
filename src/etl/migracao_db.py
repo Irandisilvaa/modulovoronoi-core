@@ -5,8 +5,12 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import logging
 
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from config import PATH_GDB
+
+NOME_GDB = os.getenv("FILE_GDB", "Energisa_SE_6587_2024-12-31_V11_20250902-1412.gdb")
+DIR_DADOS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "dados")
+PATH_GDB = os.path.join(DIR_DADOS, NOME_GDB)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("MigracaoDB")
@@ -83,7 +87,8 @@ def migrar_gdb_para_sql(limpar_antes=True):
         logger.info(f"🔄 Processando camada: {layer_gdb} -> Tabela: {nome_tabela}")
         
         try:
-            gdf = gpd.read_file(PATH_GDB, layer=layer_gdb, engine='pyogrio')
+            # engine='pyogrio' removido pois a lib foi removida do requirements.
+            gdf = gpd.read_file(PATH_GDB, layer=layer_gdb)
             
             if gdf.empty:
                 logger.warning(f"⚠️ Camada {layer_gdb} vazia.")

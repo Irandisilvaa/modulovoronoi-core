@@ -49,8 +49,10 @@ def carregar_subestacoes(colunas: Optional[List[str]] = None) -> gpd.GeoDataFram
     
     try:
         if colunas:
-            cols_sql = ", ".join(colunas + ["geometry"]) if "geometry" not in colunas else ", ".join(colunas)
-            sql = f"SELECT {cols_sql} FROM subestacoes"
+            cols_sql = ", ".join([f'"{c}"' if c != 'geometry' else c for c in colunas])
+            if "geometry" not in colunas:
+                cols_sql += ", geometry"
+            sql = f'SELECT {cols_sql} FROM subestacoes'
         else:
             sql = "SELECT * FROM subestacoes"
         

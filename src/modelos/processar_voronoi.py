@@ -8,7 +8,7 @@ from scipy.spatial import Voronoi
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
-from config import CIDADE_ALVO, CRS_PROJETADO, PATH_GEOJSON, DIR_RAIZ
+from config import CIDADE_ALVO, CRS_PROJETADO, DIR_RAIZ
 from etl.carregador_aneel import carregar_subestacoes
 from database import salvar_voronoi
 
@@ -144,10 +144,6 @@ def main():
     cols = [c for c in colunas_manter if c in subs_logicas_finais.columns]
     subs_logicas_finais = subs_logicas_finais[cols]
 
-    print(f"Salvando resultado em: {PATH_GEOJSON}")
-    subs_logicas_finais.to_crs(epsg=4326).to_file(PATH_GEOJSON, driver='GeoJSON')
-    print("✅ GeoJSON gerado com sucesso!")
-    
     print("Salvando no banco de dados PostgreSQL...")
     try:
         salvar_voronoi(subs_logicas_finais.to_crs(epsg=4326))
