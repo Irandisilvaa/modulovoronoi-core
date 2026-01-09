@@ -160,7 +160,41 @@ def verificar_aneel():
                         'id': id_arquivo,
                         'checked_at': datetime.now().isoformat()
                     }, f, indent=4)
-                print(f"\nSUCESSO! .env deve ficar: FILE_GDB={nome_gdb}")
+                print(f"\n🔔 SUCESSO! .env deve ficar: FILE_GDB={nome_gdb}")
+                
+                print("\n" + "="*60)
+                print("🚀 ATUALIZANDO BANCO DE DADOS AUTOMATICAMENTE...")
+                print("="*60)
+                
+                try:
+                    print("\n1️⃣ Migrando nova base GDB para PostgreSQL...")
+                    from migracao_db import migrar_gdb_para_sql
+                    migrar_gdb_para_sql(limpar_antes=True)
+                    
+                    print("\n2️⃣ Reprocessando territórios Voronoi...")
+                    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modelos'))
+                    from processar_voronoi import main as processar_voronoi
+                    processar_voronoi()
+                    
+                    print("\n3️⃣ Regenerando análise de mercado e cache...")
+                    from analise_mercado import analisar_mercado
+                    analisar_mercado()
+                    
+                    print("\n" + "="*60)
+                    print("✅ ATUALIZAÇÃO COMPLETA!")
+                    print("="*60)
+                    print("🎉 Nova base GDB integrada com sucesso!")
+                    print("💾 Dados disponíveis no PostgreSQL")
+                    print("🗺️ Voronoi atualizado")
+                    print("📊 Cache regenerado")
+                    print("="*60)
+                    
+                except Exception as e:
+                    print(f"\n⚠️ AVISO: Erro ao atualizar banco automáticamente: {e}")
+                    print("🛠️ Para atualizar manualmente, execute:")
+                    print("  1. python src/etl/migracao_db.py")
+                    print("  2. python src/modelos/processar_voronoi.py")
+                    print("  3. python src/modelos/analise_mercado.py")
 
     except Exception as e:
         print(f"Erro: {e}")

@@ -25,11 +25,11 @@ def calcular_criticidade(potencia_gd_kw, consumo_anual_mwh):
     percentual_injecao = (geracao_estimada_mwh / consumo_anual_mwh) * 100
     
     if percentual_injecao < 15:
-        return "NORMAL", "#28a745"  
+        return "NORMAL", "#28a745"
     elif percentual_injecao < 30:
-        return "MÉDIO", "#ffc107"  
+        return "MÉDIO", "#ffc107"
     else:
-        return "CRÍTICO", "#dc3545" 
+        return "CRÍTICO", "#dc3545"
 
 def agregar_metricas_totais(df_mercado):
     """
@@ -48,7 +48,6 @@ def agregar_metricas_totais(df_mercado):
     total_consumo_mwh = 0.0
     
     for _, row in df_mercado.iterrows():
-        # Processar métricas de rede
         metricas = row.get('metricas_rede', {})
         if isinstance(metricas, str):
             import ast
@@ -60,7 +59,6 @@ def agregar_metricas_totais(df_mercado):
         total_clientes += metricas.get('total_clientes', 0)
         total_consumo_mwh += metricas.get('consumo_anual_mwh', 0)
         
-        # Processar GD
         gd = row.get('geracao_distribuida', {})
         if isinstance(gd, str):
             import ast
@@ -91,7 +89,6 @@ def criar_mapa_voronoi_semaforo(gdf, df_mercado):
     Returns:
         folium.Map: Mapa configurado
     """
-    # Calcular centro do mapa
     centroid = gdf.to_crs(epsg=3857).geometry.centroid.to_crs(gdf.crs).unary_union.centroid
     
     m = folium.Map(
@@ -101,12 +98,10 @@ def criar_mapa_voronoi_semaforo(gdf, df_mercado):
         tiles='OpenStreetMap'
     )
     
-    # Criar mapa de criticidade por ID
     criticidade_map = {}
     for _, row in df_mercado.iterrows():
         id_tec = str(row.get('id_tecnico', ''))
         
-        # Processar dados
         metricas = row.get('metricas_rede', {})
         gd = row.get('geracao_distribuida', {})
         
@@ -138,7 +133,6 @@ def criar_mapa_voronoi_semaforo(gdf, df_mercado):
             'paineis': gd.get('total_unidades', 0)
         }
     
-    # Adicionar polígonos ao mapa
     def style_function(feature):
         cod_id = str(feature['properties'].get('COD_ID', ''))
         info = criticidade_map.get(cod_id, {'cor': '#cccccc', 'nivel': 'DESCONHECIDO'})
@@ -158,7 +152,6 @@ def criar_mapa_voronoi_semaforo(gdf, df_mercado):
             'fillOpacity': 0.8
         }
     
-    # Criar tooltips personalizados
     for _, row in gdf.iterrows():
         cod_id = str(row.get('COD_ID', ''))
         info = criticidade_map.get(cod_id, {
@@ -201,7 +194,6 @@ def render_view():
         st.error(f"Erro ao importar utils: {e}")
         st.stop()
     
-    # Carregar dados
     with st.spinner("Carregando dados do sistema..."):
         gdf, dados_lista = carregar_dados_cache()
         
@@ -211,10 +203,8 @@ def render_view():
         
         df_mercado = pd.DataFrame(dados_lista)
     
-    # Calcular métricas totais
     metricas = agregar_metricas_totais(df_mercado)
     
-    # --- SEÇÃO 1: KPIs PRINCIPAIS ---
     st.header("📊 Indicadores Gerais")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -245,7 +235,6 @@ def render_view():
     
     st.divider()
     
-    # --- SEÇÃO 2: MAPA DE VORONOI SEMAFÓRICO ---
     st.header("🗺️ Mapa de Criticidade das Subestações")
     
     st.markdown("""
@@ -265,10 +254,8 @@ def render_view():
     
     st.divider()
     
-    # --- SEÇÃO 3: TABELA DE SUBESTAÇÕES ---
     st.header("📋 Resumo por Subestação")
     
-    # Preparar dados da tabela
     tabela_dados = []
     
     for _, row in df_mercado.iterrows():
@@ -311,12 +298,10 @@ def render_view():
     
     df_tabela = pd.DataFrame(tabela_dados)
     
-    # Ordenar por criticidade (Crítico > Médio > Normal)
     ordem_criticidade = {'CRÍTICO': 0, 'MÉDIO': 1, 'NORMAL': 2}
     df_tabela['_ordem'] = df_tabela['Status'].map(ordem_criticidade)
     df_tabela = df_tabela.sort_values('_ordem').drop(columns=['_ordem'])
     
-    # Aplicar formatação condicional
     def colorir_status(val):
         if val == 'CRÍTICO':
             return 'background-color: #dc3545; color: white'
@@ -331,7 +316,6 @@ def render_view():
         hide_index=True
     )
     
-    # Botão de download
     csv = df_tabela.to_csv(index=False, encoding='utf-8-sig')
     st.download_button(
         label="📥 Baixar Relatório Completo (CSV)",
@@ -343,7 +327,6 @@ def render_view():
     
     st.divider()
     
-    # --- SEÇÃO 4: ESTATÍSTICAS ADICIONAIS ---
     st.header("📈 Estatísticas do Sistema")
     
     col_stat1, col_stat2 = st.columns(2)

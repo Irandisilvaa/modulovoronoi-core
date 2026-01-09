@@ -1,141 +1,72 @@
 # GridScope Core
 
-**GridScope Core** é uma API avançada e um Dashboard interativo para monitoramento de redes elétricas e simulação de geração distribuída.  
-O sistema integra dados geográficos, métricas de rede e dados climáticos para fornecer insights em tempo real sobre a infraestrutura elétrica.
+**GridScope Core** é uma plataforma avançada de monitoramento de redes elétricas e simulação de geração distribuída.
+O sistema utiliza uma arquitetura moderna orientada a serviços para processar dados geoespaciais e fornecer insights em tempo real.
 
 ---
 
 ## 🚀 Funcionalidades
 
 - **API RESTful (FastAPI)**  
-  Endpoints para consulta do status da rede, ranking de subestações e simulação de geração solar.
+  Endpoints otimizados para consulta do status da rede com **Cache L1 (Redis)**.
 
 - **Dashboard Interativo (Streamlit)**  
-  Visualização de dados em mapas (Folium), gráficos de consumo e métricas de Geração Distribuída (GD).
+  Visualização de dados em mapas, análise de mercado e simulação solar.
 
-- **Processamento Geoespacial**  
-  Geração automática de territórios de atuação de subestações utilizando Diagramas de Voronoi.
+- **Processamento Geoespacial (PostGIS)**  
+  Cálculo de territórios Voronoi e junções espaciais realizadas diretamente no banco de dados.
 
-- **Simulação Solar**  
-  Estimativa de geração fotovoltaica baseada em dados climáticos reais e previstos (via Open-Meteo API).
-
----
-
-## 🛠️ Tecnologias Utilizadas
-
-- **Backend:** Python, FastAPI, Uvicorn  
-- **Frontend/Dashboard:** Streamlit, Plotly, Folium  
-- **Geoprocessamento:** GeoPandas, Shapely, OSMnx, SciPy (Voronoi)  
-- **Infraestrutura:** Docker, Docker Compose  
-- **Dados Externos:** Open-Meteo (Clima)
+- **Simulação Solar com IA**  
+  Estimativa de geração fotovoltaica baseada em dados climáticos reais (Open-Meteo) e perfis de consumo reais.
 
 ---
 
-## ⚙️ Configuração Inicial (Obrigatória)
+## 🛠️ Arquitetura Técnica
 
-Antes de rodar o projeto (via Docker ou manualmente), é necessário configurar as variáveis de ambiente.
+O sistema foi migrado para uma arquitetura robusta baseada em banco de dados:
 
-### 1️⃣ Clone o repositório
+- **Database:** PostgreSQL 15 + PostGIS (Armazenamento Centralizado)
+- **Cache:** Redis 7 (Aceleração de API - Respostas em <50ms)
+- **Backend:** Python 3.10+, FastAPI
+- **Frontend:** Streamlit
+- **Infraestrutura:** Docker Compose
+
+---
+
+## ⚙️ Instalação (Docker - Recomendado)
+
+A forma padrão de execução é via Docker, que sobe automaticamente o Banco, Redis, API e Dashboard.
+
+### 1. Configuração
+
+Clone o repositório e configure o `.env`:
 
 ```bash
 git clone <url-do-repositorio>
 cd gridScope-core
-````
-
-### 2️⃣ Crie o arquivo `.env`
-
-Na raiz do projeto, crie um arquivo `.env` baseado no `.env.example`:
-
-```env
-# Arquivos de dados (caminhos relativos ou absolutos)
-FILE_GDB="Energisa_SE_6587_2023-12-31_V11_20250701-0833.gdb"
-FILE_GEOJSON="subestacoes_logicas_aracaju.geojson"
-FILE_MERCADO="perfil_mercado_aracaju.json"
-
-# Configuração da cidade alvo para o Voronoi
-CIDADE_ALVO="Aracaju, Sergipe, Brazil"
+# Crie o arquivo .env baseado no .env.example
+# Certifique-se de configurar DATABASE_URL e REDIS_HOST
 ```
 
-### 3️⃣ Dados de entrada
-
-Certifique-se de que o arquivo `.gdb` esteja dentro da pasta `dados/` na raiz do projeto.
-
----
-
-## ▶️ Como Executar
-
-Escolha uma das opções abaixo para rodar o sistema.
-
----
-
-## 🐳 Opção 1: Executar com Docker (Recomendado)
-
-A forma mais simples de executar o projeto, sem necessidade de configurar Python ou bibliotecas geoespaciais localmente.
-
-### Pré-requisitos
-
-* Docker
-* Docker Compose
-
-### Executar
+### 2. Execução
 
 ```bash
 docker-compose up --build
 ```
 
-> Para rodar em segundo plano:
+### 3. Acessos
 
-```bash
-docker-compose up -d --build
-```
-
-### Acessos
-
-* **Dashboard:** [http://localhost:8501](http://localhost:8501)
-* **API (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
-
-### Parar os serviços
-
-```bash
-docker-compose down
-```
+- **Dashboard:** [http://localhost:8501](http://localhost:8501)
+- **API Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## 🐍 Opção 2: Execução Manual (Python Local)
+## � Ferramentas de Manutenção
 
-Indicada para desenvolvimento, testes e depuração.
+O projeto inclui scripts utilitários para gerenciamento do banco de dados:
 
-### 1️⃣ Criar e ativar ambiente virtual
-
-```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Linux / Mac
-source venv/bin/activate
-```
-
-### 2️⃣ Instalar dependências
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3️⃣ Executar o sistema
-
-```bash
-python run_all.py
-```
-
-O script irá automaticamente:
-
-* Gerar os territórios de Voronoi
-* Processar a análise de mercado
-* Iniciar a API
-* Abrir o Dashboard no navegador
+- `python backup_db.py`: Gera backup completo do banco PostgreSQL (salva em `backups/`).
+- `python criar_indices.py`: Recria índices de performance nas tabelas do banco.
 
 ---
 
@@ -144,21 +75,19 @@ O script irá automaticamente:
 ```text
 gridScope-core/
 ├── src/
-│   ├── api.py            # Aplicação FastAPI
-│   ├── dashboard.py      # Dashboard Streamlit
-│   ├── config.py         # Configurações e variáveis de ambiente
-│   ├── utils.py          # Funções utilitárias
-│   └── modelos/          # Lógica de Voronoi e Análise de Mercado
+│   ├── api.py            # API com Cache Redis
+│   ├── database.py       # Camada de Acesso a Dados (PostgreSQL)
+│   ├── cache_redis.py    # Módulo de Cache L1
+│   ├── etl/              # Scripts de Carga e Migração
+│   └── modelos/          # Regras de Negócio (Voronoi, Mercado)
 │
-├── dados/                # Arquivos GDB e dados de entrada
-├── logs/                 # Logs de execução
-├── run_all.py            # Orquestrador do sistema
-├── docker-compose.yml
-├── Dockerfile
+├── dados/                # (Obsoleto - Dados migrados para o Banco)
+├── docker-compose.yml    # Orquestração (App, DB, Redis)
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-Desenvolvido como parte do projeto **GridScope** ⚡
+**Responsável Técnico:** Guilherme Araújo
+**Atualizado em:** Janeiro/2026

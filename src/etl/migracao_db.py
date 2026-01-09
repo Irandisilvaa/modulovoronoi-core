@@ -5,8 +5,12 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import logging
 
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from config import PATH_GDB
+
+NOME_GDB = os.getenv("FILE_GDB", "Energisa_SE_6587_2024-12-31_V11_20250902-1412.gdb")
+DIR_DADOS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "dados")
+PATH_GDB = os.path.join(DIR_DADOS, NOME_GDB)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("MigracaoDB")
@@ -20,10 +24,41 @@ CAMADAS_ALVO = {
 }
 
 def get_database_engine():
-    db_url = os.getenv("DATABASE_URL", "postgresql://admin:minhasenha@localhost:5432/gridscope_local")
+    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5433/gridscope_local")
     return create_engine(db_url)
 
-def migrar_gdb_para_sql():
+
+def limpar_dados_antigos(engine):
+    """
+    Remove dados antigos das tabelas antes de migrar nova base
+    Usa TRUNCATE para ser mais rápido que DELETE
+    """
+    logger.info("🧼 Limpando dados antigos do banco...")
+    
+    tabelas_para_limpar = list(CAMADAS_ALVO.values()) + ['territorios_voronoi', 'cache_mercado']
+    
+    try:
+        with engine.connect() as conn:
+            for tabela in tabelas_para_limpar:
+                try:
+                    conn.execute(text(f"TRUNCATE TABLE {tabela} CASCADE"))
+                    logger.info(f"  ✅ Tabela '{tabela}' limpa")
+                except Exception as e:
+                    logger.warning(f"  ⚠️  Tabela '{tabela}': {e}")
+            
+            conn.commit()
+            logger.info("✅ Limpeza concluída!")
+    except Exception as e:
+        logger.error(f"❌ Erro ao limpar dados: {e}")
+        raise
+
+def migrar_gdb_para_sql(limpar_antes=True):
+    """
+    Migra dados do GDB para PostgreSQL
+    
+    Args:
+        limpar_antes: Se True, limpa dados antigos antes de migrar
+    """
     if not os.path.exists(PATH_GDB):
         logger.error(f"GDB não encontrado em: {PATH_GDB}")
         return
@@ -39,13 +74,21 @@ def migrar_gdb_para_sql():
     except Exception as e:
         logger.error(f"❌ Falha ao conectar no Banco: {e}")
         return
+    
+    if limpar_antes:
+        try:
+            limpar_dados_antigos(engine)
+        except Exception as e:
+            logger.error(f"❌ Erro ao limpar dados antigos: {e}")
+            logger.info("⚠️  Continuando com a migração...")
 
     for layer_gdb, nome_tabela in CAMADAS_ALVO.items():
         logger.info(f"--------------------------------------------------")
         logger.info(f"🔄 Processando camada: {layer_gdb} -> Tabela: {nome_tabela}")
         
         try:
-            gdf = gpd.read_file(PATH_GDB, layer=layer_gdb, engine='pyogrio')
+            # engine='pyogrio' removido pois a lib foi removida do requirements.
+            gdf = gpd.read_file(PATH_GDB, layer=layer_gdb)
             
             if gdf.empty:
                 logger.warning(f"⚠️ Camada {layer_gdb} vazia.")

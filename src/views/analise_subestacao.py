@@ -34,11 +34,11 @@ def render_view():
     CATEGORIAS_ALVO = ["Residencial", "Comercial", "Industrial", "Rural", "Poder Público"]
 
     CORES_MAPA = {
-      "Residencial": "#007bff",        
-      "Comercial": "#ffc107",          
-      "Industrial": "#dc3545",         
-      "Rural": "#28a745",              
-      "Poder Público": "#6f42c1",      
+        "Residencial": "#007bff",        
+        "Comercial": "#ffc107",          
+        "Industrial": "#dc3545",         
+        "Rural": "#28a745",              
+        "Poder Público": "#6f42c1",      
     }
 
     def formatar_br(valor):
@@ -82,7 +82,7 @@ def render_view():
     if 'subestacao' in df_mercado.columns:
         for idx, row in df_mercado.iterrows():
             id_tec = row.get('id_tecnico', idx)
-            label = row['subestacao']  
+            label = row['subestacao']
             mapa_opcoes[label] = id_tec
 
     if not mapa_opcoes:
@@ -165,8 +165,9 @@ def render_view():
             fig_barras = go.Figure(data=[go.Bar(
                 x=list(detalhe_gd.keys()),
                 y=list(detalhe_gd.values()),
-                marker_color=lista_cores, 
-                text=[f"{v:,.1f} kW".replace(",", "X").replace(".", ",").replace("X", ".") for v in detalhe_gd.values()],
+                marker_color='#1f77b4',
+                text=[f"{v:,.1f} kW".replace(",", "X").replace(".", ",").replace("X", ".") for v in
+                    detalhe_gd.values()],
                 textposition='auto'
             )])
             
@@ -189,7 +190,8 @@ def render_view():
                         'fillOpacity': 0.7 if is_sel else 0.3}
 
             folium.GeoJson(gdf, style_function=style_fn, tooltip=folium.GeoJsonTooltip(fields=["NOM", "COD_ID"],
-                                                                                     aliases=["Subestação:", "ID:"])).add_to(m)
+                                                                                    aliases=["Subestação:",
+                                                                                            "ID:"])).add_to(m)
             st_folium(m, use_container_width=True, height=400)
         else:
             st.warning("⚠️ Geometria não encontrada para este ID.")
@@ -210,18 +212,23 @@ def render_view():
                     if val > 0:
                         dados_clientes.append({"Segmento": k, "Valor": val})
 
-            df_clientes = pd.DataFrame(dados_clientes)
-            if not df_clientes.empty:
-                df_clientes = df_clientes.sort_values(by="Valor", ascending=False)
-                fig_bar_cli = go.Figure(data=[go.Bar(
-                    x=df_clientes["Segmento"],
-                    y=df_clientes["Valor"],
-                    marker_color=[CORES_MAPA.get(s, '#007bff') for s in df_clientes["Segmento"]],
-                    text=df_clientes["Valor"],
-                    textposition='auto'
-                )])
-                fig_bar_cli.update_layout(margin=dict(t=20, b=20), height=350, yaxis_title="Qtd Clientes")
-                st.plotly_chart(fig_bar_cli, use_container_width=True)
+            df_pie = pd.DataFrame(dados_clientes)
+            if not df_pie.empty:
+                fig_pie = px.pie(df_pie, values="Valor", names="Segmento", hole=0.4, color="Segmento",
+                                color_discrete_map=CORES_MAPA)
+                fig_pie.update_layout(
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    height=350,
+                    showlegend=True,
+                    legend=dict(orientation="h", y=-0.1)
+                )
+                fig_pie.update_traces(
+                    textposition='auto',
+                    textinfo='percent+label',
+                    textfont_size=13,
+                    hovertemplate='%{label}<br>Qtd: %{value}<br>%{percent}'
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.info("Sem dados de Clientes.")
 
@@ -240,21 +247,32 @@ def render_view():
             df_carga = pd.DataFrame(dados_carga)
             if not df_carga.empty:
                 df_carga = df_carga.sort_values(by="Valor", ascending=False)
-                fig_carga = go.Figure(data=[go.Bar(
-                    x=df_carga["Segmento"],
-                    y=df_carga["Valor"],
-                    marker_color=[CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"]],
-                    text=[f"{val:,.0f}".replace(",", ".") for val in df_carga["Valor"]],
-                    textposition='auto'
-                )])
-                fig_carga.update_layout(margin=dict(t=20, b=20), height=350, yaxis_title="MWh")
+
+                fig_carga = go.Figure(data=[
+                    go.Bar(
+                        x=df_carga["Segmento"],
+                        y=df_carga["Valor"],
+                        marker_color=[CORES_MAPA.get(s, '#17a2b8') for s in df_carga["Segmento"]],
+                        text=[f"{val:,.0f} MWh".replace(",", "X").replace(".", ",").replace("X", ".") for val in
+                            df_carga["Valor"]],
+                        textposition='auto',
+                        hovertemplate='<b>%{x}</b><br>Consumo: %{y:,.2f} MWh<extra></extra>'
+                    )
+                ])
+                fig_carga.update_layout(
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    height=350,
+                    yaxis_title="Consumo Anual (MWh)",
+                    showlegend=False,
+                    xaxis=dict(title=None)
+                )
                 st.plotly_chart(fig_carga, use_container_width=True)
             else:
                 st.info("Sem dados de Carga.")
 
         st.divider()
 
-        st.header("📋 Relatório Técnico")
+        st.header("📋 Relatório Técnico & Ações")
         col_table, col_actions = st.columns([2, 1])
 
         with col_table:
@@ -284,16 +302,13 @@ def render_view():
             if penetracao > 25:
                 st.warning("⚠️ Risco de inversão de fluxo.")
             else:
-                st.success("✅ Rede com capacidade.")
+                st.success("✅ **Rede Estável:** Capacidade disponível.")
+
+            csv = pd.DataFrame(dados_consolidados).to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Baixar Relatório CSV", data=csv, file_name=f"relatorio_{id_escolhido}.csv",
+                            mime="text/csv", use_container_width=True)
 
     with tab_ia_render:
-        if tab_ia is not None:
-            try:
-                tab_ia.render_tab_ia(subestacao_obj, data_analise, dados_gd)
-            except Exception as e:
-                st.error(f"Erro ao executar módulo de IA: {e}")
-                st.code(str(e))
-        else:
-            st.error("❌ O arquivo 'tab_ia.py' não foi encontrado na pasta 'views'. Verifique se o nome está correto (com underline, não ponto).")
+        tab_ia.render_tab_ia(subestacao_obj, data_analise, dados_gd)
 
     st.caption(f"GridScope v4.9 Enterprise | Dados atualizados em: {date.today().strftime('%d/%m/%Y')}")

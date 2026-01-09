@@ -8,8 +8,9 @@ from scipy.spatial import Voronoi
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
-from config import CIDADE_ALVO, CRS_PROJETADO, PATH_GEOJSON, DIR_RAIZ
+from config import CIDADE_ALVO, CRS_PROJETADO, DIR_RAIZ
 from etl.carregador_aneel import carregar_subestacoes
+from database import salvar_voronoi
 
 def voronoi_finite_polygons_2d(vor, radius=None):
     """
@@ -44,9 +45,9 @@ def voronoi_finite_polygons_2d(vor, radius=None):
             if v2 < 0: v1, v2 = v2, v1
             if v1 >= 0: continue
             
-            t = vor.points[p2] - vor.points[p1] # tangent
+            t = vor.points[p2] - vor.points[p1]
             t /= np.linalg.norm(t)
-            n = np.array([-t[1], t[0]])  # normal
+            n = np.array([-t[1], t[0]])
             
             midpoint = vor.points[[p1, p2]].mean(axis=0)
             direction = np.sign(np.dot(midpoint - center, n)) * n
@@ -83,7 +84,33 @@ def main():
 
     print("Filtrando subestações na malha urbana...")
     subs_cidade = gpd.clip(subs_raw, limite_cidade)
-    print(f"   -> Encontradas: {len(subs_cidade)} subestações.")
+    print(f"   -> Encontradas: {len(subs_cidade)} subestações na área urbana.")
+    
+    print("Filtrando subestações com consumidores (em operação)...")
+    try:
+        from database import carregar_consumidores
+        df_consumidores = carregar_consumidores(colunas=['UNI_TR_MT'], ignore_geometry=True)
+        
+        ids_trafos_com_consumo = set(df_consumidores['UNI_TR_MT'].dropna().unique())
+        
+        from database import carregar_transformadores
+        df_trafos = carregar_transformadores(colunas=['COD_ID', 'SUB'])
+        
+        trafos_com_consumo = df_trafos[df_trafos['COD_ID'].isin(ids_trafos_com_consumo)]
+        
+        ids_subs_com_consumo = set(trafos_com_consumo['SUB'].dropna().astype(str).unique())
+        
+        subs_cidade['COD_ID'] = subs_cidade['COD_ID'].astype(str)
+        total_antes = len(subs_cidade)
+        subs_cidade = subs_cidade[subs_cidade['COD_ID'].isin(ids_subs_com_consumo)].copy()
+        
+        removidas = total_antes - len(subs_cidade)
+        print(f"   -> Removidas {removidas} subestações sem consumidores (planejadas/sem carga)")
+        print(f"   -> {len(subs_cidade)} subestações em operação.")
+        
+    except Exception as e:
+        print(f"   ⚠️ Aviso: Não foi possível filtrar por consumidores: {e}")
+        print(f"   -> Mantendo todas as {len(subs_cidade)} subestações urbanas.")
     
     if len(subs_cidade) < 2:
         print("ERRO: Menos de 2 subestações. Voronoi requer no mínimo 2 pontos.")
@@ -117,29 +144,36 @@ def main():
     cols = [c for c in colunas_manter if c in subs_logicas_finais.columns]
     subs_logicas_finais = subs_logicas_finais[cols]
 
-    print(f"Salvando resultado em: {PATH_GEOJSON}")
-    subs_logicas_finais.to_crs(epsg=4326).to_file(PATH_GEOJSON, driver='GeoJSON')
-    print("✅ GeoJSON gerado com sucesso!")
-
-
+    print("Salvando no banco de dados PostgreSQL...")
     try:
-        print("Gerando mapa visual (PNG)...")
-        fig, ax = plt.subplots(figsize=(10, 10))
-        limite_proj.plot(ax=ax, color='#f4f4f4', edgecolor='#999999', linewidth=1)
-        subs_logicas_finais.plot(ax=ax, column='NOM', cmap='tab20', alpha=0.6, edgecolor='white', linewidth=0.5)
-        pontos_proj.plot(ax=ax, color='#333333', markersize=15, zorder=5)
-        
-        for x, y, label in zip(pontos_proj.geometry.x, pontos_proj.geometry.y, pontos_proj['NOM']):
-            ax.text(x, y, str(label), fontsize=8, ha='center', va='bottom', fontweight='bold', color='#222222')
+        salvar_voronoi(subs_logicas_finais.to_crs(epsg=4326))
+        print("✅ Territórios Voronoi salvos no banco com sucesso!")
+    except Exception as e:
+        print(f"⚠️ Aviso: Não foi possível salvar no banco: {e}")
 
-        plt.title(f"GridScope: Áreas de Atuação - {CIDADE_ALVO}", fontsize=14)
-        plt.axis('off')
+    print("Gerando mapa visual (PNG)...")
+    try:
+        import matplotlib.pyplot as plt
         
-        caminho_img = os.path.join(DIR_RAIZ, "mapa_voronoi_preview.png")
-        plt.savefig(caminho_img, dpi=150, bbox_inches='tight')
-        print(f"📸 Mapa salvo em: {caminho_img}")
-        plt.close() # Fecha a figura para liberar memória
+        fig, ax = plt.subplots(figsize=(12, 10))
         
+        subs_logicas_finais.plot(ax=ax, alpha=0.5, edgecolor='black', cmap='tab20')
+        
+        nome_col = 'NOM' if 'NOM' in subs_logicas_finais.columns else 'NOME'
+        if nome_col in subs_logicas_finais.columns:
+            for idx, row in subs_logicas_finais.iterrows():
+                centroid = row['geometry'].centroid
+                ax.text(centroid.x, centroid.y, row[nome_col], 
+                    fontsize=8, ha='center', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+        
+        ax.set_title(f'Territórios de Influência - {CIDADE_ALVO}')
+        ax.axis('off')
+        
+        path_png = os.path.join(DIR_RAIZ, 'territorios_voronoi.png')
+        plt.savefig(path_png, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        print(f"✅ Mapa salvo em: {path_png}")
     except Exception as e:
         print(f"Aviso: Não foi possível gerar a imagem PNG: {e}")
 

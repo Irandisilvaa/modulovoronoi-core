@@ -11,10 +11,11 @@ from shapely.geometry import mapping
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
-    from config import PATH_GEOJSON
     from utils import carregar_dados_cache, fundir_dados_geo_mercado
-except ImportError:
-    pass
+    from cache_redis import cache_json
+except ImportError as e:
+    print(f"CRITICAL API ERROR: {e}")
+    sys.exit(1)
 
 app = FastAPI(
     title="GridScope API",
@@ -118,6 +119,7 @@ def home():
     return {"status": "online", "system": "GridScope Core 4.7"}
 
 @app.get("/mercado/ranking", response_model=List[SubestacaoData], tags=["Core"])
+@cache_json(ttl_seconds=300)
 def obter_dados_completos():
     try:
         gdf, dados_mercado = carregar_dados_cache()
@@ -143,17 +145,20 @@ def obter_dados_completos():
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 @app.get("/mercado/geojson", tags=["Core"])
+@cache_json(ttl_seconds=3600)
 def obter_apenas_geojson():
-    if os.path.exists(PATH_GEOJSON):
-        with open(PATH_GEOJSON, 'r', encoding='utf-8') as f: return json.load(f)
-    raise HTTPException(status_code=404, detail="GeoJSON não encontrado")
+    """Retorna apenas o GeoJSON dos territórios Voronoi do banco PostgreSQL"""
+    try:
+        gdf, _ = carregar_dados_cache()
+        return json.loads(gdf.to_json())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar GeoJSON: {str(e)}")
 
 @app.get("/simulacao/{nome_subestacao}", response_model=SimulacaoSolar, tags=["Simulacao"])
 def simular_geracao(
     nome_subestacao: str, 
     data: Optional[str] = Query(None, description="Data: DD-MM-AAAA ou DD/MM/AAAA")
 ):
-    # 1. TRATAMENTO DA DATA
     data_obj = date.today()
     if data:
         data_clean = data.replace("/", "-").replace(" ", "-")
@@ -200,11 +205,11 @@ def simular_geracao(
     try:
         geom = alvo.get('geometry')
         if isinstance(geom, dict) and 'coordinates' in geom:
-             coords = geom['coordinates']
-             if isinstance(coords[0], float): # Point
-                 lon, lat = coords[0], coords[1]
-             else: # Polygon
-                 lon, lat = coords[0][0][0], coords[0][0][1]
+            coords = geom['coordinates']
+            if isinstance(coords[0], float):
+                lon, lat = coords[0], coords[1]
+            else: 
+                lon, lat = coords[0][0][0], coords[0][0][1]
     except Exception as e:
         print(f"Aviso Geometria: {e}")
 

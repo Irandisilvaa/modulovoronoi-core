@@ -35,7 +35,6 @@ def gerar_gabarito(nome, horas, eh_fds):
         elif "CONTORNO" in nome or "SUBESTA6" in nome:
             val = 1.8 + 0.9 * np.sin((h - 11) * np.pi / 10)
 
-        # PERFIL RESIDENCIAL / PADRÃO
         else:
             val = 1.0
             val += 0.7 * np.exp(-(h - 11) ** 2 / 12)

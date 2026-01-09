@@ -3,98 +3,60 @@ import os
 import geopandas as gpd
 import pandas as pd
 import sys
-import math  # ✅ ADICIONADO (necessário para tratar NaN)
+import math 
 
-# Define nomes de arquivo que você está usando (baseado no seu erro)
-FILENAME_GEOJSON = "subestacoes_logicas_aracaju.geojson"
-FILENAME_JSON = "mercado.json" # Ou o nome exato do seu json de mercado
 
-def encontrar_arquivo(nome_arquivo):
-    """
-    Procura o arquivo recursivamente a partir da raiz do projeto.
-    Retorna o caminho absoluto se encontrar.
-    """
-    # 1. Tenta achar a raiz do projeto (subindo de src/utils.py para raiz)
-    current_dir = os.path.dirname(os.path.abspath(__file__)) # Pasta src
-    project_root = os.path.dirname(current_dir) # Pasta raiz (gridscope-core)
-    
-    # Lista de locais prováveis para buscar
-    caminhos_tentativa = [
-        os.path.join(project_root, "dados", nome_arquivo), # Pasta dados/
-        os.path.join(project_root, nome_arquivo),          # Raiz do projeto
-        os.path.join(current_dir, nome_arquivo),           # Pasta src/
-        nome_arquivo                                       # Caminho relativo simples
-    ]
-    
-    for caminho in caminhos_tentativa:
-        if os.path.exists(caminho):
-            return caminho
-            
-    return None
 
 def limpar_float(val):
-    """Converte valores numéricos para float (trata vírgula BR e NaN)."""
+    """Converte valores numéricos para float (trata vírgula BR)."""
+    if val is None or val == "": return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    val_str = str(val).strip()
     try:
-        if val is None or val == "":
-            return 0.0
-
-        # ✅ TRATAMENTO DE NaN (pandas / numpy / float)
-        if isinstance(val, float) and math.isnan(val):
-            return 0.0
-
-        if isinstance(val, (int, float)):
-            return float(val)
-
-        val_str = str(val).strip()
-
-        if val_str.lower() in ["nan", "none", "--"]:
-            return 0.0
-
-        # Trata formato brasileiro
         if ',' in val_str and '.' in val_str:
             val_str = val_str.replace('.', '').replace(',', '.')
         elif ',' in val_str:
             val_str = val_str.replace(',', '.')
-
         return float(val_str)
-
-    except Exception:
+    except ValueError:
         return 0.0
 
 def carregar_dados_cache():
-    """Carrega dados geoespaciais e de mercado de forma resiliente."""
-    
-    # 1. Encontrar GeoJSON
-    path_geo = encontrar_arquivo(FILENAME_GEOJSON)
-    if not path_geo:
-        # Tenta um nome genérico caso o específico falhe
-        path_geo = encontrar_arquivo("subestacoes.geojson")
-        
-    if not path_geo:
-        raise FileNotFoundError(
-            f"❌ ERRO CRÍTICO: O arquivo '{FILENAME_GEOJSON}' não foi encontrado na pasta 'dados/' nem na raiz."
-        )
-
-    # 2. Encontrar JSON de Mercado
-    path_mercado = encontrar_arquivo(FILENAME_JSON)
-    if not path_mercado:
-        # Tenta achar json com nome parecido
-        path_mercado = encontrar_arquivo("perfil_mercado_aracaju.json")
-
-    if not path_mercado:
-        raise FileNotFoundError(f"❌ ERRO CRÍTICO: JSON de mercado não encontrado.")
-
+    """
+    Carrega dados do PostgreSQL (100% Database - Sem arquivos).
+    Retorna: (GeoDataFrame, List[Dict])
+    """
     try:
-        # Carrega os arquivos
-        gdf = gpd.read_file(path_geo)
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from database import carregar_voronoi, carregar_subestacoes, carregar_cache_mercado
         
-        with open(path_mercado, 'r', encoding='utf-8') as f:
-            dados_mercado = json.load(f)
-
+        # 1. Voronoi + Nomes (Geometry Source)
+        gdf = carregar_voronoi()
+        
+        # Enriquecer com nomes oficiais da tabela subestacoes
+        gdf_subs = carregar_subestacoes()
+        if 'NOME' in gdf_subs.columns and 'COD_ID' in gdf_subs.columns:
+            # Cria mapa COD_ID -> NOME
+            gdf_subs_simple = gdf_subs[['COD_ID', 'NOME']].drop_duplicates(subset=['COD_ID']).copy()
+            gdf_subs_simple['COD_ID'] = gdf_subs_simple['COD_ID'].astype(str)
+            
+            # Garante join por string
+            gdf['COD_ID'] = gdf['COD_ID'].astype(str)
+            gdf = gdf.merge(gdf_subs_simple, on='COD_ID', how='left')
+            
+            # Renomeia para padrão esperado pelo frontend (NOM)
+            gdf = gdf.rename(columns={'NOME': 'NOM'})
+        
+        # 2. Dados de Mercado (Business Data Source)
+        dados_mercado = carregar_cache_mercado()
+        
         return gdf, dados_mercado
         
+    except ImportError as ie:
+        raise Exception(f"Erro de Importação (database.py não achado): {ie}")
     except Exception as e:
-        raise Exception(f"Erro ao ler arquivos ({path_geo}): {str(e)}")
+        print(f"❌ Erro ao carregar dados do Banco: {e}")
+        return None, []
 
 def fundir_dados_geo_mercado(gdf, dados_mercado):
     """Cruza dados."""

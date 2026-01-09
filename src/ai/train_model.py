@@ -46,26 +46,27 @@ def gerar_dados_treino_inteligente():
     datas = pd.date_range(start="2023-01-01", end="2023-12-31", freq="h")
     
     features = []
-    
-  
-    n_cenarios = 50 
-    
-    for _ in range(n_cenarios):
-       
-        p_res = np.random.uniform(0, 1)
-        p_ind = np.random.uniform(0, 1 - p_res)
-        p_com = 1.0 - (p_res + p_ind) 
-        
-        # Garante que rural entre as vezes no mix
-        if np.random.rand() > 0.8:
-            p_rur = np.random.uniform(0, 0.3)
-            # Renormaliza para somar 1
-            total = p_res + p_ind + p_com + p_rur
-            p_res /= total; p_ind /= total; p_com /= total; p_rur /= total
-        else:
-            p_rur = 0.0
 
-        # Cria a curva combinada baseada nesse DNA
+    perfis_mock = [
+        "SUB_RESIDENCIAL", "SUB_INDUSTRIAL", "SUB_COMERCIAL", "SUB_MISTA", "SUB_RURAL"
+    ]
+
+    for i in range(50):
+        tipo_sub = np.random.choice(perfis_mock)
+        identificador_str = f"{tipo_sub}_{i}"    
+        nome_upper = identificador_str.upper()
+
+        if "SUB_RESIDENCIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.8, 0.1, 0.1, 0.0
+        elif "SUB_INDUSTRIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.1, 0.1, 0.8, 0.0
+        elif "SUB_COMERCIAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.1, 0.8, 0.1, 0.0
+        elif "SUB_RURAL" in nome_upper:
+            p_res, p_com, p_ind, p_rur = 0.2, 0.1, 0.0, 0.7
+        else:
+            p_res, p_com, p_ind, p_rur = 0.4, 0.3, 0.3, 0.0
+
         curva_mista_base = (CURVA_RES * p_res) + \
                            (CURVA_COM * p_com) + \
                            (CURVA_IND * p_ind) + \
@@ -75,16 +76,13 @@ def gerar_dados_treino_inteligente():
             h = data.hour
             mes = data.month
             
-            # Valor base da curva para aquela hora
-            consumo_base = curva_mista_base[h]
+            consumo_base = curva_mista_base[h] * 100 
             
-            # Fatores de Calendário
             eh_fds = data.dayofweek >= 5
             eh_feriado = data.date() in br_holidays
             
             fator_fds = 0.85 if eh_fds or eh_feriado else 1.0
             
-          
             fator_sazonal = 1.0
             if mes in [12, 1, 2, 3]: # Verão
                 fator_sazonal = 1.15
@@ -128,10 +126,9 @@ def treinar_modelo_universal():
     X = df.drop(columns=["fator_consumo"])
     y = df["fator_consumo"]
     
-    # Modelo robusto
     model = RandomForestRegressor(
         n_estimators=100,
-        max_depth=15, # Evita overfitting
+        max_depth=15, 
         random_state=42,
         n_jobs=-1
     )
